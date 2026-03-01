@@ -1,3 +1,107 @@
+/* BenGo admin theme overrides */
+:root{
+  --bengo-bg:#0d0d0d;
+  --bengo-panel:#111111;
+  --bengo-accent:#e60000;
+  --bengo-muted:#a3a3a3;
+  --bengo-white:#ffffff;
+}
+
+/* Global admin body */
+body{
+  background: linear-gradient(180deg,var(--bengo-bg) 0%, #071018 100%);
+  color:var(--bengo-white);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* Admin header */
+#header {
+  background: rgba(17,17,17,0.9);
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+#header h1 a {
+  color: var(--bengo-white) !important;
+  font-weight:900;
+  letter-spacing:-0.02em;
+}
+
+/* Breadcrumbs & nav */
+.breadcrumbs, .module h2, #user-tools a {
+  color:var(--bengo-muted) !important;
+}
+
+/* Panels */
+.dashboard, .module, .app-list, .grp-module {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2));
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+}
+
+/* Buttons */
+.button, input[type=submit], .default {
+  background: linear-gradient(180deg, rgba(230,0,0,0.14), rgba(230,0,0,0.08));
+  color:var(--bengo-white) !important;
+  border:1px solid rgba(230,0,0,0.36);
+  border-radius:8px;
+  padding:6px 12px;
+}
+.button:hover, input[type=submit]:hover, .default:hover{
+  box-shadow:0 0 0 6px rgba(230,0,0,0.06);
+}
+
+/* Table styling */
+table#result_list {
+  background: transparent;
+  border-collapse: collapse;
+}
+table#result_list th, table#result_list td{
+  border-bottom:1px solid rgba(255,255,255,0.06);
+  padding:10px 8px;
+}
+
+/* Form fields */
+fieldset.module, .form-row, .form-row .field-box{
+  background: rgba(255,255,255,0.02);
+  border:1px solid rgba(255,255,255,0.04);
+  padding:12px;
+  border-radius:8px;
+}
+input, textarea, select {
+  background: rgba(0,0,0,0.28);
+  color:var(--bengo-white);
+  border:1px solid rgba(255,255,255,0.06);
+  padding:8px 10px;
+  border-radius:6px;
+}
+
+/* Notifications */
+.messagelist .success { background: rgba(16,185,129,0.08); border-left:4px solid rgba(16,185,129,0.45); }
+.messagelist .error { background: rgba(230,0,0,0.06); border-left:4px solid rgba(230,0,0,0.45); }
+
+/* Footer */
+#footer { color:var(--bengo-muted); }
+
+/* Responsive tweaks */
+@media (max-width:900px){
+  #content-main { padding:12px; }
+  #header { padding:8px 12px; }
+}
+
+/* Utility */
+.muted { color: var(--bengo-muted) !important; }
+.brand { font-weight:900; font-style:italic; }
+
+/* Make admin logo area stand out */
+#branding { background: linear-gradient(90deg, rgba(230,0,0,0.08), rgba(255,255,255,0.02)); padding:8px 12px; border-radius:6px; }
+
+/* Improve look of action-checkbox */
+input.action-select, input[type=checkbox] { filter: none; }
+
+/* Code blocks */
+pre, code { background: rgba(0,0,0,0.25); color: #e6e6e6; padding:6px; border-radius:6px; }
+
+/* End of BenGo admin theme */
 /* BenGo Admin Theme - Ghost of Tsushima Aesthetic */
 
 :root {
