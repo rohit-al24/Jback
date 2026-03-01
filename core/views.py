@@ -7,6 +7,7 @@ from io import BytesIO
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db.models import Case, Count, F, IntegerField, Q, Sum, When
+from django.db.utils import OperationalError, ProgrammingError
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -35,6 +36,16 @@ from .streaks import touch_study_streak
 from .xp import award_xp
 import hashlib
 from datetime import timedelta
+
+
+def _schema_out_of_date_response() -> JsonResponse:
+	"""Return a helpful error when production DB migrations weren’t applied."""
+	return JsonResponse(
+		{
+			"detail": "Server database schema is out of date. On the VPS, run 'python manage.py migrate' and restart the server.",
+		},
+		status=500,
+	)
 
 
 def _is_paid(user: User) -> bool:
@@ -120,6 +131,26 @@ def submit_answer(request: HttpRequest) -> JsonResponse:
 		payload = json.loads(request.body.decode("utf-8"))
 	except json.JSONDecodeError:
 		return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+	question_id = payload.get("question_id")
+	selected = (payload.get("selected") or "").strip().upper()
+	if not question_id or selected not in {"A", "B", "C", "D"}:
+		return JsonResponse({"detail": "question_id and selected(A-D) required"}, status=400)
+
+	question = get_object_or_404(Question.objects.select_related("weekly_content"), pk=question_id)
+
+	touch_study_streak(user_id=user.pk, today=today)
+
+	is_correct = selected == question.correct_answer
+	if is_correct:
+		award_xp(user_id=user.pk, points=1, reason="question_correct")
+		MasteredQuestion.objects.get_or_create(user=user, question=question)
+		# Clear any scheduled review items for this question today.
+		ReviewQueue.objects.filter(user=user, question=question, scheduled_date=today).delete()
+	else:
+		schedule_two_reviews_for_wrong_answer(user=user, question=question, today=today)
+
+	return JsonResponse({"correct": is_correct})
 
 
 def _hash_otp(email: str, otp: str) -> str:
@@ -210,26 +241,6 @@ def verify_email_otp(request: HttpRequest) -> JsonResponse:
 
 	return JsonResponse({"verified": True})
 
-	question_id = payload.get("question_id")
-	selected = payload.get("selected")
-	if not question_id or selected not in {"A", "B", "C", "D"}:
-		return JsonResponse({"detail": "question_id and selected(A-D) required"}, status=400)
-
-	question = get_object_or_404(Question.objects.select_related("weekly_content"), pk=question_id)
-
-	touch_study_streak(user_id=user.pk, today=today)
-
-	is_correct = selected == question.correct_answer
-	if is_correct:
-		award_xp(user_id=user.pk, points=1, reason="question_correct")
-		MasteredQuestion.objects.get_or_create(user=user, question=question)
-		# Clear any scheduled review items for this question today.
-		ReviewQueue.objects.filter(user=user, question=question, scheduled_date=today).delete()
-	else:
-		schedule_two_reviews_for_wrong_answer(user=user, question=question, today=today)
-
-	return JsonResponse({"correct": is_correct})
-
 
 def _iso_week_start_end(week_start: timezone.datetime.date) -> tuple[str, str]:
 	return (week_start.isoformat(), (week_start + timezone.timedelta(days=6)).isoformat())
@@ -288,13 +299,28 @@ def current_week_content(request: HttpRequest) -> JsonResponse:
 		return JsonResponse({"detail": "Not allowed"}, status=403)
 
 	today = timezone.localdate()
-	mondais = (
-		Mondai.objects.filter(status=Mondai.Status.APPROVED, week_start_date__lte=today, week_end_date__gte=today)
-		.order_by("public_id")
-	)
-
-	week_start = mondais.first().week_start_date if mondais.exists() else None
-	week_end = mondais.first().week_end_date if mondais.exists() else None
+	try:
+		mondais = (
+			Mondai.objects.filter(
+				status=Mondai.Status.APPROVED,
+				week_start_date__lte=today,
+				week_end_date__gte=today,
+			)
+			.order_by("public_id")
+		)
+		first = mondais.first()
+		week_start = first.week_start_date if first else None
+		week_end = first.week_end_date if first else None
+		mondai_items = [
+			{
+				"public_id": m.public_id,
+				"name": m.name,
+				"question_count": m.questions.count(),
+			}
+			for m in mondais
+		]
+	except (OperationalError, ProgrammingError):
+		return _schema_out_of_date_response()
 
 	return JsonResponse(
 		{
@@ -303,14 +329,7 @@ def current_week_content(request: HttpRequest) -> JsonResponse:
 				"start": week_start.isoformat() if week_start else None,
 				"end": week_end.isoformat() if week_end else None,
 			},
-			"mondais": [
-				{
-					"public_id": m.public_id,
-					"name": m.name,
-					"question_count": m.questions.count(),
-				}
-				for m in mondais
-			],
+			"mondais": mondai_items,
 		}
 	)
 
@@ -331,28 +350,35 @@ def week_study_questions(request: HttpRequest) -> JsonResponse:
 	except Exception:
 		return JsonResponse({"detail": "Invalid date"}, status=400)
 
-	mondais = Mondai.objects.filter(status=Mondai.Status.APPROVED, week_start_date__lte=today, week_end_date__gte=today)
-	week_start = mondais.first().week_start_date if mondais.exists() else None
-	week_end = mondais.first().week_end_date if mondais.exists() else None
-	qs = MondaiQuestion.objects.select_related("mondai").filter(mondai__in=mondais)
-	items = []
-	for q in qs:
-		items.append(
-			{
-				"id": q.id,
-				"mondai_public_id": q.mondai.public_id,
-				"prompt": q.prompt,
-				"options": {
-					"A": q.option_a,
-					"B": q.option_b,
-					"C": q.option_c,
-					"D": q.option_d,
-				},
-				"correct": q.correct_answer,
-			}
+	try:
+		mondais = Mondai.objects.filter(
+			status=Mondai.Status.APPROVED,
+			week_start_date__lte=today,
+			week_end_date__gte=today,
 		)
-
-	random.shuffle(items)
+		first = mondais.first()
+		week_start = first.week_start_date if first else None
+		week_end = first.week_end_date if first else None
+		qs = MondaiQuestion.objects.select_related("mondai").filter(mondai__in=mondais)
+		items = []
+		for q in qs:
+			items.append(
+				{
+					"id": q.id,
+					"mondai_public_id": q.mondai.public_id,
+					"prompt": q.prompt,
+					"options": {
+						"A": q.option_a,
+						"B": q.option_b,
+						"C": q.option_c,
+						"D": q.option_d,
+					},
+					"correct": q.correct_answer,
+				}
+			)
+		random.shuffle(items)
+	except (OperationalError, ProgrammingError):
+		return _schema_out_of_date_response()
 	return JsonResponse(
 		{
 			"date": today.isoformat(),
@@ -374,24 +400,26 @@ def fixed_week_list(request: HttpRequest) -> JsonResponse:
 		return JsonResponse({"detail": "Not allowed"}, status=403)
 
 	today = timezone.localdate()
-	current_qs = Mondai.objects.filter(
-		status=Mondai.Status.APPROVED,
-		week_start_date__lte=today,
-		week_end_date__gte=today,
-	)
-	current_start = current_qs.first().week_start_date if current_qs.exists() else None
-	current_end = current_qs.first().week_end_date if current_qs.exists() else None
-	current_count = (
-		MondaiQuestion.objects.filter(mondai__in=current_qs).count() if current_qs.exists() else 0
-	)
+	try:
+		current_qs = Mondai.objects.filter(
+			status=Mondai.Status.APPROVED,
+			week_start_date__lte=today,
+			week_end_date__gte=today,
+		)
+		current_first = current_qs.first()
+		current_start = current_first.week_start_date if current_first else None
+		current_end = current_first.week_end_date if current_first else None
+		current_count = MondaiQuestion.objects.filter(mondai__in=current_qs).count() if current_first else 0
 
-	prev_mondai = (
-		Mondai.objects.filter(status=Mondai.Status.APPROVED, week_end_date__lt=today)
-		.exclude(week_start_date__isnull=True)
-		.exclude(week_end_date__isnull=True)
-		.order_by("-week_end_date")
-		.first()
-	)
+		prev_mondai = (
+			Mondai.objects.filter(status=Mondai.Status.APPROVED, week_end_date__lt=today)
+			.exclude(week_start_date__isnull=True)
+			.exclude(week_end_date__isnull=True)
+			.order_by("-week_end_date")
+			.first()
+		)
+	except (OperationalError, ProgrammingError):
+		return _schema_out_of_date_response()
 	prev_start = getattr(prev_mondai, "week_start_date", None)
 	prev_end = getattr(prev_mondai, "week_end_date", None)
 	prev_count = 0
@@ -443,8 +471,15 @@ def daily_week_quiz(request: HttpRequest) -> JsonResponse:
 
 	user: User = request.user  # type: ignore[assignment]
 	today = timezone.localdate()
-	mondais = Mondai.objects.filter(status=Mondai.Status.APPROVED, week_start_date__lte=today, week_end_date__gte=today)
-	qs = MondaiQuestion.objects.select_related("mondai").filter(mondai__in=mondais).order_by("?")
+	try:
+		mondais = Mondai.objects.filter(
+			status=Mondai.Status.APPROVED,
+			week_start_date__lte=today,
+			week_end_date__gte=today,
+		)
+		qs = MondaiQuestion.objects.select_related("mondai").filter(mondai__in=mondais).order_by("?")
+	except (OperationalError, ProgrammingError):
+		return _schema_out_of_date_response()
 
 	# Use remaining count as the quiz size, but at least 1.
 	task, _ = DailyQuizTask.objects.get_or_create(user=user, date=today)
@@ -480,8 +515,15 @@ def daily_week_quiz_retake(request: HttpRequest) -> JsonResponse:
 		return JsonResponse({"detail": "Paid subscription required"}, status=402)
 
 	today = timezone.localdate()
-	mondais = Mondai.objects.filter(status=Mondai.Status.APPROVED, week_start_date__lte=today, week_end_date__gte=today)
-	qs = MondaiQuestion.objects.select_related("mondai").filter(mondai__in=mondais)
+	try:
+		mondais = Mondai.objects.filter(
+			status=Mondai.Status.APPROVED,
+			week_start_date__lte=today,
+			week_end_date__gte=today,
+		)
+		qs = MondaiQuestion.objects.select_related("mondai").filter(mondai__in=mondais)
+	except (OperationalError, ProgrammingError):
+		return _schema_out_of_date_response()
 
 	# Prefer unseen questions for today.
 	seen_ids = set(
@@ -636,7 +678,10 @@ def submit_mondai_answer(request: HttpRequest) -> JsonResponse:
 	if not question_id or selected not in {"A", "B", "C", "D"}:
 		return JsonResponse({"detail": "question_id and selected(A-D) required"}, status=400)
 
-	q = get_object_or_404(MondaiQuestion.objects.select_related("mondai"), pk=question_id)
+	try:
+		q = get_object_or_404(MondaiQuestion.objects.select_related("mondai"), pk=question_id)
+	except (OperationalError, ProgrammingError):
+		return _schema_out_of_date_response()
 	if q.mondai.status != Mondai.Status.APPROVED:
 		return JsonResponse({"detail": "Question not available"}, status=403)
 
