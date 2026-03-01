@@ -30,6 +30,12 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
 ]
 
+# Allow the Cloudflare tunnel hostname and the zynix.us zone
+ALLOWED_HOSTS += [
+    "jback.zynix.us",
+    ".zynix.us",
+]
+
 # React dev server origins for CSRF checks (unsafe methods need trusted origins)
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
@@ -37,6 +43,11 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
 ]
+
+# When running behind Cloudflare (or other reverse proxies) trust the
+# X-Forwarded-Proto header so Django knows the original request scheme.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
 
 
 # Application definition
