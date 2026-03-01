@@ -20,6 +20,7 @@ from .models import MasteredQuestion, Question, ReviewQueue, User, VideoCompleti
 from .models import College
 from .services import schedule_two_reviews_for_wrong_answer
 from .streaks import touch_study_streak
+from .models import Mondai
 
 
 def _current_weekly_content_for_user(user: User) -> WeeklyContent | None:
@@ -222,5 +223,46 @@ def colleges_list(request: HttpRequest) -> JsonResponse:
 	qs = College.objects.all().order_by('name')
 	data = [{'id': c.id, 'name': c.name, 'city': c.city} for c in qs]
 	return JsonResponse({'colleges': data})
+
+
+def mondai_detail(request: HttpRequest, public_id: str) -> JsonResponse:
+	"""Return JSON representation of a Mondai for frontend viewers.
+
+	Public mondais with status APPROVED are returned; Sensei/Shitsumon users can fetch their own drafts.
+	"""
+	user = request.user  # may be AnonymousUser
+
+	mondai = get_object_or_404(Mondai, public_id=public_id)
+
+	# If not approved, only the creator or staff can view it.
+	if mondai.status != Mondai.Status.APPROVED:
+		if not request.user.is_authenticated:
+			return JsonResponse({'detail': 'Authentication required'}, status=401)
+		if mondai.created_by_id != user.pk and not user.is_staff:
+			return JsonResponse({'detail': 'Not allowed'}, status=403)
+
+	def _q_to_payload(q):
+		return {
+			'id': q.id,
+			'prompt': q.prompt,
+			'option_a': q.option_a,
+			'option_b': q.option_b,
+			'option_c': q.option_c,
+			'option_d': q.option_d,
+			'correct_answer': q.correct_answer,
+		}
+
+	data = {
+		'public_id': mondai.public_id,
+		'name': mondai.name,
+		'status': mondai.status,
+		'transcript': mondai.transcript,
+		'video': mondai.display_video,
+		'original_video_url': mondai.video_url or mondai.video_embed_url or None,
+		'vocab': [{'term': v.term, 'reading': v.reading, 'meaning': v.meaning} for v in mondai.vocab.all()],
+		'questions': [_q_to_payload(q) for q in mondai.questions.all()],
+	}
+
+	return JsonResponse({'mondai': data})
 
 # Create your views here.

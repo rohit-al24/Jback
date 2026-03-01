@@ -4,6 +4,7 @@ import json
 
 from django.contrib.auth import authenticate, login, logout
 from django.http import HttpRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 
@@ -26,7 +27,7 @@ def _user_payload(user) -> dict:
 @ensure_csrf_cookie
 def csrf(request: HttpRequest) -> JsonResponse:
     # Sets the CSRF cookie. Useful for SPA bootstrapping.
-    return JsonResponse({"detail": "CSRF cookie set"})
+    return JsonResponse({"detail": "CSRF cookie set", "csrfToken": get_token(request)})
 
 
 def me(request: HttpRequest) -> JsonResponse:

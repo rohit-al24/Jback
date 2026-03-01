@@ -38,6 +38,7 @@ urlpatterns = [
     path("api/referrals/", referral_views.referral_dashboard, name="referral_dashboard"),
     path("api/reviews/due/", review_views.due_reviews, name="due_reviews"),
     path("api/colleges/", views.colleges_list, name="colleges_list"),
+    path("api/mondai/<str:public_id>/", views.mondai_detail, name="mondai_detail"),
 
     path("api/billing/plans/", billing_views.plans, name="plans"),
     path(

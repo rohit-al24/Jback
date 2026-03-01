@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -42,7 +43,30 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    # Capacitor / Android WebView origin (Capacitor serves the app from localhost)
+    "http://localhost",
+    "http://127.0.0.1",
+    # Public hostname
+    "https://jback.zynix.us",
 ]
+
+# Allow the Capacitor app to call the API using cookies (credentials).
+# Capacitor typically sets Origin: http://localhost (sometimes with a port).
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://localhost(?::\\d+)?$",
+    r"^http://127\\.0\\.0\\.1(?::\\d+)?$",
+]
+
+# Cross-site cookies are required for session-based auth from a Capacitor origin
+# (the app runs at http://localhost inside the WebView, calling https://jback.zynix.us).
+# In production (DEBUG=False) we default to SameSite=None; Secure.
+# In development, keep Django defaults so cookies still work over plain HTTP.
+if (not DEBUG) or (os.environ.get("DJANGO_SECURE_COOKIES") == "1"):
+    SESSION_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SECURE = True
 
 # When running behind Cloudflare (or other reverse proxies) trust the
 # X-Forwarded-Proto header so Django knows the original request scheme.
@@ -60,12 +84,15 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    'corsheaders',
+
     'administration.apps.AdministrationConfig',
     'core.apps.CoreConfig',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

@@ -10,10 +10,8 @@
     const v = sel.value;
     const upload = document.getElementById('video_upload');
     const link = document.getElementById('video_link');
-    const embed = document.getElementById('video_embed');
     if (upload) upload.style.display = (v === 'upload') ? 'block' : 'none';
     if (link) link.style.display = (v === 'link') ? 'block' : 'none';
-    if (embed) embed.style.display = (v === 'embed') ? 'block' : 'none';
   }
 
   function addForm(prefix) {
@@ -78,16 +76,10 @@
       </div>
 
       <div id="video_link" style="margin-top:10px">
-        <label>Video Link URL</label>
+        <label>YouTube Link</label>
         {{ form.video_url }}
         {% if form.video_url.errors %}<div class="muted small">{{ form.video_url.errors }}</div>{% endif %}
-      </div>
-
-      <div id="video_embed" style="margin-top:10px">
-        <label>Embed URL</label>
-        {{ form.video_embed_url }}
-        {% if form.video_embed_url.errors %}<div class="muted small">{{ form.video_embed_url.errors }}</div>{% endif %}
-        <div class="muted small" style="margin-top:6px">Example: YouTube embed URL</div>
+        <div class="muted small" style="margin-top:6px">Paste a YouTube URL (watch/share/shorts). It will render as an embedded player for Sensei.</div>
       </div>
 
       <label>Transcript</label>

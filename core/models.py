@@ -253,11 +253,57 @@ class Mondai(models.Model):
 	@property
 	def display_video(self) -> dict:
 		"""Template-friendly representation of video source."""
+		def _youtube_embed_url(url: str) -> str | None:
+			"""Convert common YouTube URL formats to an embeddable URL.
+			
+			Supports:
+			- https://www.youtube.com/watch?v=VIDEO_ID
+			- https://youtu.be/VIDEO_ID
+			- https://www.youtube.com/shorts/VIDEO_ID
+			- https://www.youtube.com/embed/VIDEO_ID
+			"""
+			from urllib.parse import parse_qs, urlparse
+
+			try:
+				p = urlparse(url)
+			except Exception:
+				return None
+
+			host = (p.hostname or "").lower()
+			path = p.path or ""
+			video_id: str | None = None
+
+			if host in {"youtu.be"}:
+				video_id = path.lstrip("/").split("/")[0] or None
+			elif host.endswith("youtube.com") or host.endswith("youtube-nocookie.com"):
+				if path == "/watch":
+					qs = parse_qs(p.query)
+					video_id = (qs.get("v") or [None])[0]
+				elif path.startswith("/embed/"):
+					video_id = path.split("/embed/", 1)[1].split("/")[0] or None
+				elif path.startswith("/shorts/"):
+					video_id = path.split("/shorts/", 1)[1].split("/")[0] or None
+
+			if not video_id:
+				return None
+
+			# Basic hardening: keep only common id charset.
+			allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+			video_id = "".join(ch for ch in video_id if ch in allowed)
+			if not video_id:
+				return None
+
+			return f"https://www.youtube.com/embed/{video_id}"
+
 		if self.video_type == self.VideoType.UPLOAD and self.video_file:
 			return {"type": "upload", "url": self.video_file.url}
 		if self.video_type == self.VideoType.LINK and self.video_url:
+			embed = _youtube_embed_url(self.video_url)
+			if embed:
+				return {"type": "embed", "url": embed}
 			return {"type": "link", "url": self.video_url}
 		if self.video_type == self.VideoType.EMBED and self.video_embed_url:
+			# Backward compatibility: treat legacy embed URLs as-is.
 			return {"type": "embed", "url": self.video_embed_url}
 		return {"type": "none"}
 
