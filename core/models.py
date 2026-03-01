@@ -12,6 +12,10 @@ class User(AbstractUser):
 		N5 = "N5", "N5"
 		N4 = "N4", "N4"
 
+	class Role(models.TextChoices):
+		STUDENT = "student", "Student"
+		EMPLOYEE = "employee", "Employee"
+
 	class SubscriptionStatus(models.TextChoices):
 		FREE = "free", "Free"
 		PAID = "paid", "Paid"
@@ -40,6 +44,16 @@ class User(AbstractUser):
 	streak_count = models.PositiveIntegerField(default=0)
 	last_study_date = models.DateField(null=True, blank=True)
 
+	# Role and optional college association
+	role = models.CharField(max_length=16, choices=Role.choices, default=Role.STUDENT)
+	college = models.ForeignKey(
+		"College",
+		null=True,
+		blank=True,
+		on_delete=models.SET_NULL,
+		related_name="students",
+	)
+
 	def save(self, *args, **kwargs):
 		if not self.referral_code:
 			self.referral_code = str(uuid.uuid4()).replace("-", "")[:8].upper()
@@ -64,6 +78,14 @@ class SubscriptionPlan(models.Model):
 
 	def __str__(self) -> str:
 		return self.display_name
+
+
+class College(models.Model):
+	name = models.CharField(max_length=200)
+	city = models.CharField(max_length=120, blank=True)
+
+	def __str__(self) -> str:
+		return self.name
 
 
 class UserSubscription(models.Model):

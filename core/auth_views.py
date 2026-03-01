@@ -51,6 +51,8 @@ def register_view(request: HttpRequest) -> JsonResponse:
     last_name = (payload.get("last_name") or "").strip() or None
     referral_code = (payload.get("referral_code") or "").strip().upper()
     target_level = payload.get("target_level")
+    role = (payload.get("role") or "student").strip().lower()
+    college_id = payload.get("college_id")
 
     if not username or not password:
         return JsonResponse({"detail": "username and password required"}, status=400)
@@ -73,6 +75,17 @@ def register_view(request: HttpRequest) -> JsonResponse:
         user.first_name = first_name
     if last_name:
         user.last_name = last_name
+    if role in {r.value for r in User.Role}:
+        user.role = role
+    if college_id:
+        try:
+            from .models import College
+
+            c = College.objects.filter(id=int(college_id)).first()
+            if c:
+                user.college = c
+        except Exception:
+            pass
     if target_level in {"N5", "N4"}:
         user.target_level = target_level
     user.referred_by = referred_by

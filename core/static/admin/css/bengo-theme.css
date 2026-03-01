@@ -1,0 +1,422 @@
+/* BenGo Admin Theme - Ghost of Tsushima Aesthetic */
+
+:root {
+    --bengo-black: #0a0a0a;
+    --bengo-crimson: #dc2626;
+    --bengo-crimson-dark: #991b1b;
+    --bengo-crimson-light: #ef4444;
+    --bengo-gold: #eab308;
+    --bengo-gold-dark: #a16207;
+    --bengo-gold-light: #fbbf24;
+    --bengo-white: #ffffff;
+    --bengo-gray-dark: #1a1a1a;
+    --bengo-gray: #333333;
+    --bengo-gray-light: #4a4a4a;
+}
+
+/* Branding */
+.bengo-branding {
+    background: linear-gradient(135deg, var(--bengo-black) 0%, #1a0505 50%, var(--bengo-gray-dark) 100%);
+    padding: 1.5rem 1rem !important;
+    border-bottom: 3px solid var(--bengo-crimson);
+    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.3);
+}
+
+#site-name {
+    margin: 0;
+    font-weight: 900;
+    font-size: 2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+#site-name a {
+    text-decoration: none;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.bengo-ben {
+    background: linear-gradient(135deg, #000000 0%, #330000 20%, #800000 40%, #B30000 60%, #E60000 80%, #FFFFFF 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 900;
+    font-style: italic;
+}
+
+.bengo-go {
+    background: linear-gradient(180deg, #3D2D0B 0%, #6B4E16 15%, #9C7A28 30%, #CFB04C 45%, #FFFFFF 50%, #CFB04C 55%, #9C7A28 70%, #6B4E16 85%, #3D2D0B 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 900;
+    font-style: italic;
+}
+
+.bengo-subtitle {
+    color: var(--bengo-gold);
+    font-size: 0.8em;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    opacity: 0.9;
+}
+
+/* Overall theme */
+body {
+    background: var(--bengo-black) !important;
+    color: #e5e5e5 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Header */
+#header {
+    background: linear-gradient(135deg, var(--bengo-gray-dark) 0%, var(--bengo-black) 100%) !important;
+    border-bottom: 2px solid var(--bengo-crimson) !important;
+    color: var(--bengo-white) !important;
+}
+
+#user-tools {
+    padding: 1rem !important;
+}
+
+#user-tools a {
+    color: var(--bengo-gold) !important;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+#user-tools a:hover {
+    color: var(--bengo-gold-light) !important;
+    text-decoration: none;
+}
+
+/* Breadcrumbs */
+div.breadcrumbs {
+    background: var(--bengo-gray-dark) !important;
+    border-bottom: 1px solid var(--bengo-crimson) !important;
+    color: var(--bengo-gold) !important;
+    padding: 0.8rem 1rem !important;
+}
+
+div.breadcrumbs a {
+    color: var(--bengo-gold-light) !important;
+    font-weight: 600;
+}
+
+div.breadcrumbs a:hover {
+    color: var(--bengo-white) !important;
+}
+
+/* Content area */
+#content {
+    background: var(--bengo-gray-dark) !important;
+    padding: 2rem !important;
+}
+
+/* Module boxes */
+.module {
+    background: var(--bengo-gray) !important;
+    border: 1px solid var(--bengo-crimson) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2) !important;
+}
+
+.module h2, .module caption {
+    background: linear-gradient(135deg, var(--bengo-crimson-dark) 0%, var(--bengo-crimson) 100%) !important;
+    color: var(--bengo-white) !important;
+    font-weight: 700 !important;
+    border-radius: 8px 8px 0 0 !important;
+    padding: 0.8rem 1rem !important;
+    border-bottom: 2px solid var(--bengo-gold) !important;
+}
+
+/* Tables */
+table {
+    background: var(--bengo-gray) !important;
+    border: none !important;
+}
+
+thead th {
+    background: var(--bengo-gray-light) !important;
+    color: var(--bengo-gold) !important;
+    font-weight: 700 !important;
+    border-bottom: 2px solid var(--bengo-crimson) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.85rem;
+}
+
+tbody tr {
+    background: var(--bengo-gray) !important;
+    border-bottom: 1px solid var(--bengo-gray-light) !important;
+}
+
+tbody tr:hover {
+    background: var(--bengo-gray-light) !important;
+}
+
+tbody td {
+    color: #e5e5e5 !important;
+    border-bottom: 1px solid var(--bengo-gray-light) !important;
+}
+
+tbody th {
+    background: var(--bengo-gray) !important;
+    color: #e5e5e5 !important;
+}
+
+/* Links */
+a {
+    color: var(--bengo-crimson-light) !important;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+a:hover {
+    color: var(--bengo-gold-light) !important;
+}
+
+/* Buttons */
+.button, input[type="submit"], input[type="button"], .submit-row input, button {
+    background: linear-gradient(135deg, var(--bengo-crimson-dark) 0%, var(--bengo-crimson) 100%) !important;
+    color: var(--bengo-white) !important;
+    border: 1px solid var(--bengo-crimson-light) !important;
+    border-radius: 6px !important;
+    padding: 0.6rem 1.2rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.button:hover, input[type="submit"]:hover, input[type="button"]:hover, .submit-row input:hover, button:hover {
+    background: linear-gradient(135deg, var(--bengo-crimson) 0%, var(--bengo-crimson-light) 100%) !important;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.5) !important;
+    transform: translateY(-1px);
+}
+
+.button.default, input[type="submit"].default, .submit-row input.default {
+    background: linear-gradient(135deg, var(--bengo-gold-dark) 0%, var(--bengo-gold) 100%) !important;
+    border-color: var(--bengo-gold-light) !important;
+    color: var(--bengo-black) !important;
+    box-shadow: 0 2px 8px rgba(234, 179, 8, 0.3);
+}
+
+.button.default:hover, input[type="submit"].default:hover, .submit-row input.default:hover {
+    background: linear-gradient(135deg, var(--bengo-gold) 0%, var(--bengo-gold-light) 100%) !important;
+    box-shadow: 0 4px 12px rgba(234, 179, 8, 0.5) !important;
+}
+
+/* Delete buttons */
+.deletelink, .deletelink-box a {
+    background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%) !important;
+}
+
+/* Forms */
+.form-row {
+    border-bottom: 1px solid var(--bengo-gray-light) !important;
+}
+
+label {
+    color: var(--bengo-gold) !important;
+    font-weight: 600 !important;
+}
+
+input[type="text"], input[type="password"], input[type="email"], input[type="number"], 
+input[type="url"], textarea, select {
+    background: var(--bengo-gray-light) !important;
+    color: var(--bengo-white) !important;
+    border: 1px solid var(--bengo-crimson) !important;
+    border-radius: 4px !important;
+    padding: 0.5rem !important;
+}
+
+input[type="text"]:focus, input[type="password"]:focus, input[type="email"]:focus, 
+input[type="number"]:focus, input[type="url"]:focus, textarea:focus, select:focus {
+    background: var(--bengo-gray) !important;
+    border-color: var(--bengo-gold) !important;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.2);
+}
+
+/* Messages */
+.messagelist li {
+    background: var(--bengo-gray-light) !important;
+    border-left: 4px solid var(--bengo-gold) !important;
+    color: var(--bengo-white) !important;
+    border-radius: 4px;
+}
+
+.messagelist li.success {
+    border-left-color: #22c55e !important;
+    background: rgba(34, 197, 94, 0.1) !important;
+}
+
+.messagelist li.error {
+    border-left-color: var(--bengo-crimson) !important;
+    background: rgba(220, 38, 38, 0.1) !important;
+}
+
+.messagelist li.warning {
+    border-left-color: var(--bengo-gold) !important;
+    background: rgba(234, 179, 8, 0.1) !important;
+}
+
+/* Dashboard */
+#content-main {
+    background: transparent !important;
+}
+
+.dashboard .module table th,
+.dashboard .module table td {
+    padding: 0.8rem !important;
+}
+
+/* Pagination */
+.paginator {
+    color: #e5e5e5 !important;
+}
+
+.paginator a {
+    background: var(--bengo-gray-light) !important;
+    color: var(--bengo-gold) !important;
+    border: 1px solid var(--bengo-crimson) !important;
+    border-radius: 4px;
+    padding: 0.4rem 0.8rem;
+    margin: 0 0.2rem;
+}
+
+.paginator a:hover {
+    background: var(--bengo-crimson) !important;
+    color: var(--bengo-white) !important;
+}
+
+/* Filters */
+#changelist-filter {
+    background: var(--bengo-gray) !important;
+    border-left: 2px solid var(--bengo-crimson) !important;
+    border-radius: 8px;
+}
+
+#changelist-filter h2 {
+    background: var(--bengo-crimson-dark) !important;
+    color: var(--bengo-white) !important;
+    padding: 0.8rem 1rem !important;
+    border-radius: 8px 8px 0 0;
+}
+
+#changelist-filter h3 {
+    color: var(--bengo-gold) !important;
+    font-weight: 700;
+    margin-top: 1rem;
+}
+
+#changelist-filter li.selected a {
+    color: var(--bengo-gold-light) !important;
+    font-weight: 700;
+}
+
+/* Action bar */
+.actions {
+    background: var(--bengo-gray-light) !important;
+    border: 1px solid var(--bengo-crimson) !important;
+    border-radius: 6px;
+    padding: 0.8rem !important;
+}
+
+.actions select {
+    background: var(--bengo-gray) !important;
+    color: var(--bengo-white) !important;
+    border: 1px solid var(--bengo-crimson) !important;
+}
+
+.actions label {
+    color: var(--bengo-gold) !important;
+}
+
+/* Object tools */
+.object-tools {
+    float: right;
+}
+
+.object-tools li {
+    background: var(--bengo-crimson) !important;
+    border-radius: 6px;
+}
+
+.object-tools a {
+    color: var(--bengo-white) !important;
+    font-weight: 700;
+    padding: 0.6rem 1.2rem;
+}
+
+.object-tools a:hover {
+    background: var(--bengo-crimson-light) !important;
+}
+
+/* Inline forms */
+.inline-group {
+    background: var(--bengo-gray) !important;
+    border: 1px solid var(--bengo-crimson) !important;
+    border-radius: 8px;
+}
+
+.inline-group .tabular thead th {
+    background: var(--bengo-gray-light) !important;
+}
+
+/* Help text */
+.help, p.help, .helptext {
+    color: #999 !important;
+    font-size: 0.85rem;
+}
+
+/* Errors */
+.errorlist {
+    background: rgba(220, 38, 38, 0.1) !important;
+    border: 1px solid var(--bengo-crimson) !important;
+    border-radius: 4px;
+    color: var(--bengo-crimson-light) !important;
+}
+
+.errors {
+    background: rgba(220, 38, 38, 0.1) !important;
+    border: 1px solid var(--bengo-crimson) !important;
+    color: var(--bengo-crimson-light) !important;
+}
+
+/* Calendar widget */
+.calendarbox, .clockbox {
+    background: var(--bengo-gray) !important;
+    border: 2px solid var(--bengo-crimson) !important;
+    color: var(--bengo-white) !important;
+}
+
+.calendar caption, .calendarbox h2 {
+    background: var(--bengo-crimson) !important;
+    color: var(--bengo-white) !important;
+}
+
+.calendar td a {
+    color: var(--bengo-white) !important;
+}
+
+.calendar td a:hover {
+    background: var(--bengo-crimson) !important;
+}
+
+/* Sidebar */
+.module h2 a {
+    color: var(--bengo-white) !important;
+}
+
+/* Footer (if any) */
+#footer {
+    background: var(--bengo-gray-dark) !important;
+    border-top: 2px solid var(--bengo-crimson) !important;
+    color: #999 !important;
+}

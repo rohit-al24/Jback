@@ -37,6 +37,7 @@ urlpatterns = [
     path("api/path/", path_views.learning_path, name="learning_path"),
     path("api/referrals/", referral_views.referral_dashboard, name="referral_dashboard"),
     path("api/reviews/due/", review_views.due_reviews, name="due_reviews"),
+    path("api/colleges/", views.colleges_list, name="colleges_list"),
 
     path("api/billing/plans/", billing_views.plans, name="plans"),
     path(

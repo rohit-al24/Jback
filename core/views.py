@@ -17,6 +17,7 @@ from reportlab.pdfgen import canvas
 
 from .decorators import api_login_required
 from .models import MasteredQuestion, Question, ReviewQueue, User, VideoCompletion, WeeklyContent
+from .models import College
 from .services import schedule_two_reviews_for_wrong_answer
 from .streaks import touch_study_streak
 
@@ -214,5 +215,12 @@ def generate_certificate(request: HttpRequest) -> HttpResponse:
 
 	buffer.seek(0)
 	return FileResponse(buffer, as_attachment=True, filename="certificate.pdf")
+
+
+@api_login_required
+def colleges_list(request: HttpRequest) -> JsonResponse:
+	qs = College.objects.all().order_by('name')
+	data = [{'id': c.id, 'name': c.name, 'city': c.city} for c in qs]
+	return JsonResponse({'colleges': data})
 
 # Create your views here.

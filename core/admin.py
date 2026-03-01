@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
 from .models import (
+	College,
 	Mondai,
 	MondaiQuestion,
 	MondaiVocabulary,
@@ -14,6 +15,11 @@ from .models import (
 	VideoCompletion,
 	WeeklyContent,
 )
+
+# Customize admin site headers
+admin.site.site_header = "BenGo Administration"
+admin.site.site_title = "BenGo Admin Portal"
+admin.site.index_title = "Welcome to BenGo Admin"
 
 
 @admin.register(User)
@@ -29,15 +35,31 @@ class UserAdmin(DjangoUserAdmin):
 				)
 			},
 		),
+		(
+			"Profile",
+			{
+				"fields": (
+					"role",
+					"college",
+					"referral_code",
+					"referred_by",
+					"streak_count",
+					"last_study_date",
+				)
+			},
+		),
 	)
 	list_display = (
 		"username",
 		"email",
+		"role",
 		"target_level",
 		"subscription_status",
 		"total_points",
 		"is_staff",
 	)
+	list_filter = ("role", "target_level", "subscription_status", "is_staff")
+	search_fields = ("username", "email", "first_name", "last_name")
 
 
 @admin.action(description="Approve selected weekly content")
@@ -108,3 +130,14 @@ class MondaiQuestionAdmin(admin.ModelAdmin):
 	list_display = ("mondai", "id", "correct_answer", "order")
 	list_filter = ("mondai",)
 	search_fields = ("prompt",)
+
+
+@admin.register(College)
+class CollegeAdmin(admin.ModelAdmin):
+	list_display = ("name", "city", "student_count")
+	search_fields = ("name", "city")
+	list_filter = ("city",)
+	
+	def student_count(self, obj):
+		return obj.students.count()
+	student_count.short_description = "Students"
