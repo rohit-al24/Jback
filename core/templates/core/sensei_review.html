@@ -1,0 +1,113 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Review Mondai{% endblock %}
+
+{% block content %}
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <div class="h1">Review Mondai</div>
+        <div class="muted">ID: <strong>{{ mondai.public_id }}</strong> · Created by: <strong>{{ mondai.created_by.username }}</strong></div>
+      </div>
+    </div>
+    <div class="col" style="display:flex; align-items:center; justify-content:flex-end;">
+      <a class="btn" href="{% url 'sensei_dashboard' %}">← Back</a>
+    </div>
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="card">
+    <div class="h2">Video</div>
+    {% with v=mondai.display_video %}
+      {% if v.type == 'upload' %}
+        <video controls style="width:100%; max-height:420px; border-radius: 16px;">
+          <source src="{{ v.url }}" />
+        </video>
+      {% elif v.type == 'link' %}
+        <div class="muted">Video link:</div>
+        <a class="btn" href="{{ v.url }}" target="_blank" rel="noreferrer">Open Video</a>
+      {% elif v.type == 'embed' %}
+        <iframe
+          src="{{ v.url }}"
+          style="width:100%; height:420px; border:0; border-radius:16px; background:#000;"
+          allowfullscreen
+        ></iframe>
+      {% else %}
+        <div class="muted">No video provided.</div>
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="card">
+    <div class="h2">Transcript</div>
+    {% if mondai.transcript %}
+      <pre style="white-space: pre-wrap; font-family: inherit; margin: 0;" class="muted">{{ mondai.transcript }}</pre>
+    {% else %}
+      <div class="muted">(empty)</div>
+    {% endif %}
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="card">
+    <div class="h2">Vocabularies</div>
+    {% if mondai.vocab.all %}
+      <table class="tbl">
+        <thead><tr><th>Term</th><th>Reading</th><th>Meaning</th></tr></thead>
+        <tbody>
+          {% for v in mondai.vocab.all %}
+            <tr>
+              <td><strong>{{ v.term }}</strong></td>
+              <td class="muted">{{ v.reading }}</td>
+              <td class="muted">{{ v.meaning }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">No vocabulary items.</div>
+    {% endif %}
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="card">
+    <div class="h2">Questions</div>
+    {% if mondai.questions.all %}
+      {% for q in mondai.questions.all %}
+        <div class="card" style="margin-top:12px">
+          <div><strong>Q{{ forloop.counter }}.</strong> {{ q.prompt }}</div>
+          <div style="height:10px"></div>
+          <div class="muted small">
+            A) {{ q.option_a }}<br/>
+            B) {{ q.option_b }}<br/>
+            C) {{ q.option_c }}<br/>
+            {% if q.option_d %}D) {{ q.option_d }}<br/>{% endif %}
+          </div>
+          <div style="height:10px"></div>
+          <div class="badge badge-pending">Correct: {{ q.correct_answer }}</div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="muted">No questions.</div>
+    {% endif %}
+  </div>
+
+  <div style="height:16px"></div>
+
+  <form method="post" class="card">
+    {% csrf_token %}
+    <div class="h2">Decision</div>
+    <label>Note (optional)</label>
+    <textarea name="note" rows="3" placeholder="Optional review note..."></textarea>
+
+    <div style="height:14px"></div>
+    <div class="actions">
+      <button class="btn" type="submit" name="action" value="reject">Reject</button>
+      <button class="btn btn-primary" type="submit" name="action" value="approve">Approve</button>
+    </div>
+  </form>
+{% endblock %}

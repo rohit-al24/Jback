@@ -1,0 +1,35 @@
+{% extends 'core/base.html' %}
+
+{% block title %}BenGo Portal{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="h1">Portal</div>
+    <div class="muted">Choose where you want to go.</div>
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="h2">Django Administration</div>
+      <div class="muted small">Manage users, data, and content.</div>
+      <div style="height:12px"></div>
+      <a class="btn btn-primary" href="/admin/">Open Admin</a>
+    </div>
+
+    <div class="card">
+      <div class="h2">Shitsumon</div>
+      <div class="muted small">Create Mondai (video, transcript, vocab, questions).</div>
+      <div style="height:12px"></div>
+      <a class="btn btn-primary" href="{% url 'shitsumon_dashboard' %}">Open Shitsumon</a>
+    </div>
+
+    <div class="card">
+      <div class="h2">Sensei</div>
+      <div class="muted small">Review Mondai created by users and approve/reject.</div>
+      <div style="height:12px"></div>
+      <a class="btn btn-primary" href="{% url 'sensei_dashboard' %}">Open Sensei</a>
+    </div>
+  </div>
+{% endblock %}

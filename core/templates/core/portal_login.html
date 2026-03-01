@@ -1,0 +1,40 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Portal Login{% endblock %}
+
+{% block content %}
+  <div class="card" style="max-width:560px; margin: 0 auto;">
+    <div class="h1">Login</div>
+    <div class="muted small">Use your normal credentials and choose a role.</div>
+
+    <form method="post" style="margin-top:14px">
+      {% csrf_token %}
+
+      <label>Username</label>
+      <input name="username" autocomplete="username" required />
+
+      <label>Password</label>
+      <input name="password" type="password" autocomplete="current-password" required />
+
+      <label>Role</label>
+      <select name="role" required>
+        {% for role in role_choices %}
+          <option value="{{ role.value }}">{{ role.label }}</option>
+        {% endfor %}
+      </select>
+
+      <div style="height:16px"></div>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Login</button>
+      </div>
+
+      <div class="muted small" style="margin-top:14px">
+        Notes:
+        <ul>
+          <li>Shitsumon requires group: <strong>shitsumon</strong></li>
+          <li>Sensei requires group: <strong>sensei</strong></li>
+        </ul>
+      </div>
+    </form>
+  </div>
+{% endblock %}

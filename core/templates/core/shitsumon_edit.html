@@ -1,0 +1,205 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Edit Mondai{% endblock %}
+
+{% block head %}
+<script>
+  function updateVideoFields() {
+    const sel = document.getElementById('id_video_type');
+    if (!sel) return;
+    const v = sel.value;
+    const upload = document.getElementById('video_upload');
+    const link = document.getElementById('video_link');
+    const embed = document.getElementById('video_embed');
+    if (upload) upload.style.display = (v === 'upload') ? 'block' : 'none';
+    if (link) link.style.display = (v === 'link') ? 'block' : 'none';
+    if (embed) embed.style.display = (v === 'embed') ? 'block' : 'none';
+  }
+
+  function addForm(prefix) {
+    const total = document.getElementById('id_' + prefix + '-TOTAL_FORMS');
+    const container = document.getElementById(prefix + '_forms');
+    const empty = document.getElementById(prefix + '_empty');
+    if (!total || !container || !empty) return;
+
+    const idx = parseInt(total.value, 10);
+    const html = empty.innerHTML.replaceAll('__prefix__', idx);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'card';
+    wrapper.style.marginTop = '12px';
+    wrapper.innerHTML = html;
+
+    container.appendChild(wrapper);
+    total.value = String(idx + 1);
+  }
+
+  window.addEventListener('load', () => {
+    updateVideoFields();
+    const sel = document.getElementById('id_video_type');
+    if (sel) sel.addEventListener('change', updateVideoFields);
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <div class="h1">Edit Mondai</div>
+        <div class="muted">ID: <strong>{{ mondai.public_id }}</strong> · Status: <strong>{{ mondai.status|upper }}</strong></div>
+      </div>
+    </div>
+    <div class="col" style="display:flex; align-items:center; justify-content:flex-end;">
+      <a class="btn" href="{% url 'shitsumon_dashboard' %}">← Back</a>
+    </div>
+  </div>
+
+  <div style="height:16px"></div>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <div class="card">
+      <div class="h2">Mondai</div>
+
+      <label>Name</label>
+      {{ form.name }}
+      {% if form.name.errors %}<div class="muted small">{{ form.name.errors }}</div>{% endif %}
+
+      <label>Video Type</label>
+      {{ form.video_type }}
+      {% if form.video_type.errors %}<div class="muted small">{{ form.video_type.errors }}</div>{% endif %}
+
+      <div id="video_upload" style="margin-top:10px">
+        <label>Upload Video</label>
+        {{ form.video_file }}
+        {% if form.video_file.errors %}<div class="muted small">{{ form.video_file.errors }}</div>{% endif %}
+      </div>
+
+      <div id="video_link" style="margin-top:10px">
+        <label>Video Link URL</label>
+        {{ form.video_url }}
+        {% if form.video_url.errors %}<div class="muted small">{{ form.video_url.errors }}</div>{% endif %}
+      </div>
+
+      <div id="video_embed" style="margin-top:10px">
+        <label>Embed URL</label>
+        {{ form.video_embed_url }}
+        {% if form.video_embed_url.errors %}<div class="muted small">{{ form.video_embed_url.errors }}</div>{% endif %}
+        <div class="muted small" style="margin-top:6px">Example: YouTube embed URL</div>
+      </div>
+
+      <label>Transcript</label>
+      {{ form.transcript }}
+      {% if form.transcript.errors %}<div class="muted small">{{ form.transcript.errors }}</div>{% endif %}
+
+      <div style="height:10px"></div>
+      <div class="muted small">Tip: Options A/B/C are required. Option D is optional (3 or 4 options).</div>
+    </div>
+
+    <div style="height:16px"></div>
+
+    <div class="card">
+      <div class="row" style="align-items:center">
+        <div class="col"><div class="h2">Vocabularies</div><div class="muted small">Add vocabulary items.</div></div>
+        <div class="col" style="display:flex; justify-content:flex-end"><button type="button" class="btn" onclick="addForm('vocab')">+ Add Vocab</button></div>
+      </div>
+
+      {{ vocab_formset.management_form }}
+
+      <div id="vocab_forms">
+        {% for f in vocab_formset.forms %}
+          <div class="card" style="margin-top:12px">
+            {{ f.id }}
+            <div class="row">
+              <div class="col"><label>Term</label>{{ f.term }}{{ f.term.errors }}</div>
+              <div class="col"><label>Reading</label>{{ f.reading }}{{ f.reading.errors }}</div>
+              <div class="col"><label>Meaning</label>{{ f.meaning }}{{ f.meaning.errors }}</div>
+            </div>
+            <div class="row">
+              <div class="col"><label>Order</label>{{ f.order }}</div>
+              <div class="col"><label>Delete</label>{{ f.DELETE }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <template id="vocab_empty">
+        {{ vocab_formset.empty_form.id }}
+        <div class="row">
+          <div class="col"><label>Term</label>{{ vocab_formset.empty_form.term }}{{ vocab_formset.empty_form.term.errors }}</div>
+          <div class="col"><label>Reading</label>{{ vocab_formset.empty_form.reading }}{{ vocab_formset.empty_form.reading.errors }}</div>
+          <div class="col"><label>Meaning</label>{{ vocab_formset.empty_form.meaning }}{{ vocab_formset.empty_form.meaning.errors }}</div>
+        </div>
+        <div class="row">
+          <div class="col"><label>Order</label>{{ vocab_formset.empty_form.order }}</div>
+          <div class="col"><label>Delete</label>{{ vocab_formset.empty_form.DELETE }}</div>
+        </div>
+      </template>
+    </div>
+
+    <div style="height:16px"></div>
+
+    <div class="card">
+      <div class="row" style="align-items:center">
+        <div class="col"><div class="h2">Questions</div><div class="muted small">Google-form style questions with options.</div></div>
+        <div class="col" style="display:flex; justify-content:flex-end"><button type="button" class="btn" onclick="addForm('q')">+ Add Question</button></div>
+      </div>
+
+      {{ q_formset.management_form }}
+
+      <div id="q_forms">
+        {% for f in q_formset.forms %}
+          <div class="card" style="margin-top:12px">
+            {{ f.id }}
+            <label>Prompt</label>
+            {{ f.prompt }}{{ f.prompt.errors }}
+
+            <div class="row">
+              <div class="col"><label>Option A</label>{{ f.option_a }}{{ f.option_a.errors }}</div>
+              <div class="col"><label>Option B</label>{{ f.option_b }}{{ f.option_b.errors }}</div>
+            </div>
+            <div class="row">
+              <div class="col"><label>Option C</label>{{ f.option_c }}{{ f.option_c.errors }}</div>
+              <div class="col"><label>Option D (optional)</label>{{ f.option_d }}{{ f.option_d.errors }}</div>
+            </div>
+            <div class="row">
+              <div class="col"><label>Correct Answer</label>{{ f.correct_answer }}{{ f.correct_answer.errors }}</div>
+              <div class="col"><label>Order</label>{{ f.order }}</div>
+              <div class="col"><label>Delete</label>{{ f.DELETE }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <template id="q_empty">
+        {{ q_formset.empty_form.id }}
+        <label>Prompt</label>
+        {{ q_formset.empty_form.prompt }}{{ q_formset.empty_form.prompt.errors }}
+
+        <div class="row">
+          <div class="col"><label>Option A</label>{{ q_formset.empty_form.option_a }}{{ q_formset.empty_form.option_a.errors }}</div>
+          <div class="col"><label>Option B</label>{{ q_formset.empty_form.option_b }}{{ q_formset.empty_form.option_b.errors }}</div>
+        </div>
+        <div class="row">
+          <div class="col"><label>Option C</label>{{ q_formset.empty_form.option_c }}{{ q_formset.empty_form.option_c.errors }}</div>
+          <div class="col"><label>Option D (optional)</label>{{ q_formset.empty_form.option_d }}{{ q_formset.empty_form.option_d.errors }}</div>
+        </div>
+        <div class="row">
+          <div class="col"><label>Correct Answer</label>{{ q_formset.empty_form.correct_answer }}{{ q_formset.empty_form.correct_answer.errors }}</div>
+          <div class="col"><label>Order</label>{{ q_formset.empty_form.order }}</div>
+          <div class="col"><label>Delete</label>{{ q_formset.empty_form.DELETE }}</div>
+        </div>
+      </template>
+    </div>
+
+    <div style="height:16px"></div>
+
+    <div class="actions">
+      <button class="btn" type="submit" name="action" value="save">Save Mondai</button>
+      <button class="btn btn-primary" type="submit" name="action" value="submit">Submit for Approval</button>
+    </div>
+
+  </form>
+{% endblock %}

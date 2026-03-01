@@ -1,0 +1,53 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Shitsumon{% endblock %}
+
+{% block content %}
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <div class="h1">Shitsumon Dashboard</div>
+        <div class="muted">Create and manage your Mondai.</div>
+      </div>
+    </div>
+    <div class="col" style="display:flex; align-items:center; justify-content:flex-end;">
+      <a class="btn btn-primary" href="{% url 'shitsumon_create' %}">+ Create a Mondai</a>
+    </div>
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="card">
+    {% if mondais %}
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Mondai ID</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in mondais %}
+            <tr>
+              <td><strong>{{ m.public_id }}</strong></td>
+              <td>{{ m.name }}</td>
+              <td>
+                {% if m.status == 'draft' %}<span class="badge badge-draft">DRAFT</span>{% endif %}
+                {% if m.status == 'pending' %}<span class="badge badge-pending">PENDING</span>{% endif %}
+                {% if m.status == 'approved' %}<span class="badge badge-approved">APPROVED</span>{% endif %}
+                {% if m.status == 'rejected' %}<span class="badge badge-rejected">REJECTED</span>{% endif %}
+              </td>
+              <td class="muted small">{{ m.updated_at }}</td>
+              <td><a class="btn" href="{% url 'shitsumon_edit' public_id=m.public_id %}">Edit</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">No Mondai yet. Click “Create a Mondai”.</div>
+    {% endif %}
+  </div>
+{% endblock %}
