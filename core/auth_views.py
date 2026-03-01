@@ -12,6 +12,9 @@ def _user_payload(user) -> dict:
         "id": user.id,
         "username": user.username,
         "full_name": user.get_full_name(),
+        "first_name": getattr(user, 'first_name', ''),
+        "last_name": getattr(user, 'last_name', ''),
+        "email": getattr(user, 'email', ''),
         "target_level": getattr(user, "target_level", None),
         "total_points": getattr(user, "total_points", None),
         "subscription_status": getattr(user, "subscription_status", None),
@@ -43,6 +46,9 @@ def register_view(request: HttpRequest) -> JsonResponse:
 
     username = payload.get("username")
     password = payload.get("password")
+    email = (payload.get("email") or "").strip() or None
+    first_name = (payload.get("first_name") or "").strip() or None
+    last_name = (payload.get("last_name") or "").strip() or None
     referral_code = (payload.get("referral_code") or "").strip().upper()
     target_level = payload.get("target_level")
 
@@ -53,12 +59,20 @@ def register_view(request: HttpRequest) -> JsonResponse:
 
     if User.objects.filter(username=username).exists():
         return JsonResponse({"detail": "Username already exists"}, status=400)
+    if email and User.objects.filter(email__iexact=email).exists():
+        return JsonResponse({"detail": "Email already registered"}, status=400)
 
     referred_by = None
     if referral_code:
         referred_by = User.objects.filter(referral_code=referral_code).first()
 
     user = User(username=username)
+    if email:
+        user.email = email
+    if first_name:
+        user.first_name = first_name
+    if last_name:
+        user.last_name = last_name
     if target_level in {"N5", "N4"}:
         user.target_level = target_level
     user.referred_by = referred_by
@@ -88,12 +102,21 @@ def login_view(request: HttpRequest) -> JsonResponse:
     except json.JSONDecodeError:
         return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
-    username = payload.get("username")
+    identifier = (payload.get("identifier") or payload.get("username"))
     password = payload.get("password")
-    if not username or not password:
-        return JsonResponse({"detail": "username and password required"}, status=400)
+    if not identifier or not password:
+        return JsonResponse({"detail": "username/email and password required"}, status=400)
 
-    user = authenticate(request, username=username, password=password)
+    username_for_auth = identifier
+    # If identifier looks like an email, try resolve to username.
+    if isinstance(identifier, str) and "@" in identifier:
+        from .models import User
+
+        user_obj = User.objects.filter(email__iexact=identifier).first()
+        if user_obj:
+            username_for_auth = user_obj.username
+
+    user = authenticate(request, username=username_for_auth, password=password)
     if user is None:
         return JsonResponse({"detail": "Invalid credentials"}, status=400)
 
