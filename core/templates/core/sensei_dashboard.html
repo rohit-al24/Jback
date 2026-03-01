@@ -1,0 +1,48 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Sensei{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="h1">Sensei Dashboard</div>
+    <div class="muted">Review Mondai and approve/reject.</div>
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="card">
+    {% if mondais %}
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Mondai ID</th>
+            <th>Name</th>
+            <th>Created by</th>
+            <th>Status</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in mondais %}
+            <tr>
+              <td><strong>{{ m.public_id }}</strong></td>
+              <td>{{ m.name }}</td>
+              <td>{{ m.created_by.username }}</td>
+              <td>
+                {% if m.status == 'draft' %}<span class="badge badge-draft">DRAFT</span>{% endif %}
+                {% if m.status == 'pending' %}<span class="badge badge-pending">PENDING</span>{% endif %}
+                {% if m.status == 'approved' %}<span class="badge badge-approved">APPROVED</span>{% endif %}
+                {% if m.status == 'rejected' %}<span class="badge badge-rejected">REJECTED</span>{% endif %}
+              </td>
+              <td class="muted small">{{ m.updated_at }}</td>
+              <td><a class="btn" href="{% url 'sensei_review' public_id=m.public_id %}">View</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">No Mondai found.</div>
+    {% endif %}
+  </div>
+{% endblock %}
