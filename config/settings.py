@@ -24,7 +24,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-f+if26+p_4zkh#zct)7k95#h^3@$nrih5nzb1vblv@0b=5a7w_'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Default stays True for local development, but production should set `DJANGO_DEBUG=0`.
+_debug_env = os.environ.get("DJANGO_DEBUG", "1").strip().lower()
+DEBUG = _debug_env in {"1", "true", "yes", "on"}
 
 ALLOWED_HOSTS = [
     "localhost",
@@ -210,3 +212,8 @@ STRIPE_CANCEL_URL = "http://localhost:5173/app/shop?canceled=1"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Google Apps Script endpoint used to send OTP emails. Set via environment in production.
+APPS_SCRIPT_URL = os.environ.get('APPS_SCRIPT_URL', 'https://script.google.com/macros/s/AKfycby0z8cq7XWKBM7BuoXRV9lBBA8YS2wFNFOlZ8YYCeZifjloaiIvXE-45vfKiEDLZ4Wd/exec')
+# Shared secret to include when calling the Apps Script (required for security).
+APPS_SCRIPT_SECRET = os.environ.get('APPS_SCRIPT_SECRET', 'bengo-otp-secret-2026-secure-key-xyz789')

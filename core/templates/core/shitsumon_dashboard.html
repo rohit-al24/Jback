@@ -25,6 +25,7 @@
             <th>Mondai ID</th>
             <th>Name</th>
             <th>Status</th>
+            <th>Week</th>
             <th>Updated</th>
             <th></th>
           </tr>
@@ -40,9 +41,49 @@
                 {% if m.status == 'approved' %}<span class="badge badge-approved">APPROVED</span>{% endif %}
                 {% if m.status == 'rejected' %}<span class="badge badge-rejected">REJECTED</span>{% endif %}
               </td>
+              <td class="muted small">
+                {% if m.week_start_date and m.week_end_date %}
+                  {{ m.week_start_date }} → {{ m.week_end_date }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
               <td class="muted small">{{ m.updated_at }}</td>
-              <td><a class="btn" href="{% url 'shitsumon_edit' public_id=m.public_id %}">Edit</a></td>
+              <td style="display:flex; gap:8px; justify-content:flex-end;">
+                <a class="btn" href="{% url 'shitsumon_edit' public_id=m.public_id %}">Edit</a>
+                {% if m.status == 'approved' %}
+                  <button class="btn" type="button" data-fix-week="{{ m.public_id }}">Fix Week</button>
+                {% endif %}
+              </td>
             </tr>
+
+            {% if m.status == 'approved' %}
+              <tr data-week-row="{{ m.public_id }}" style="display:none;">
+                <td colspan="6">
+                  <form method="post" action="{% url 'shitsumon_fix_week' public_id=m.public_id %}" class="row" style="align-items:flex-end; gap:12px;">
+                    {% csrf_token %}
+                    <div class="col" style="min-width:180px;">
+                      <div class="muted small" style="margin-bottom:6px;">Select week</div>
+                      <input type="week" name="week" data-week-input="{{ m.public_id }}" class="input" />
+                    </div>
+                    <div class="col" style="min-width:160px;">
+                      <div class="muted small" style="margin-bottom:6px;">Start date</div>
+                      <input type="date" name="week_start_date" data-week-start="{{ m.public_id }}" class="input" value="{{ m.week_start_date|date:'Y-m-d' }}" />
+                    </div>
+                    <div class="col" style="min-width:160px;">
+                      <div class="muted small" style="margin-bottom:6px;">End date</div>
+                      <input type="date" name="week_end_date" data-week-end="{{ m.public_id }}" class="input" value="{{ m.week_end_date|date:'Y-m-d' }}" />
+                    </div>
+                    <div class="col" style="flex:1;"></div>
+                    <div class="col" style="display:flex; gap:8px; justify-content:flex-end;">
+                      <button class="btn btn-primary" type="submit">Save</button>
+                      <button class="btn" type="button" data-cancel-week="{{ m.public_id }}">Cancel</button>
+                    </div>
+                  </form>
+                  <div class="muted small" style="margin-top:8px;">Tip: selecting a week auto-fills dates; you can edit them.</div>
+                </td>
+              </tr>
+            {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -50,4 +91,60 @@
       <div class="muted">No Mondai yet. Click “Create a Mondai”.</div>
     {% endif %}
   </div>
+
+  <script>
+    (function () {
+      function isoWeekToDate(year, week) {
+        // Returns Monday of ISO week.
+        const simple = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+        const dow = simple.getUTCDay();
+        const ISOweekStart = new Date(simple);
+        // ISO week starts Monday (1). Adjust from Sunday(0)..Saturday(6)
+        const diff = (dow === 0 ? -6 : 1) - dow;
+        ISOweekStart.setUTCDate(simple.getUTCDate() + diff);
+        return ISOweekStart;
+      }
+
+      function toISODate(d) {
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(d.getUTCDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
+      document.querySelectorAll('[data-fix-week]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-fix-week');
+          const row = document.querySelector(`[data-week-row="${id}"]`);
+          if (row) row.style.display = '';
+        });
+      });
+
+      document.querySelectorAll('[data-cancel-week]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-cancel-week');
+          const row = document.querySelector(`[data-week-row="${id}"]`);
+          if (row) row.style.display = 'none';
+        });
+      });
+
+      document.querySelectorAll('[data-week-input]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const id = inp.getAttribute('data-week-input');
+          const val = inp.value; // "YYYY-Www"
+          if (!val || val.indexOf('-W') === -1) return;
+          const year = parseInt(val.slice(0, 4), 10);
+          const week = parseInt(val.slice(val.indexOf('W') + 1), 10);
+          if (!year || !week) return;
+          const start = isoWeekToDate(year, week);
+          const end = new Date(start);
+          end.setUTCDate(start.getUTCDate() + 6);
+          const startEl = document.querySelector(`[data-week-start="${id}"]`);
+          const endEl = document.querySelector(`[data-week-end="${id}"]`);
+          if (startEl) startEl.value = toISODate(start);
+          if (endEl) endEl.value = toISODate(end);
+        });
+      });
+    })();
+  </script>
 {% endblock %}

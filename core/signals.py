@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from django.db.models import F
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from .models import User, VideoCompletion
+from .models import VideoCompletion
+from .xp import award_xp
 
 
 @receiver(post_save, sender=VideoCompletion)
@@ -12,5 +12,4 @@ def award_points_for_video_completion(sender, instance: VideoCompletion, created
     if not created:
         return
 
-    # Concurrency-safe increment.
-    User.objects.filter(pk=instance.user_id).update(total_points=F("total_points") + 50)
+    award_xp(user_id=instance.user_id, points=50, reason="video_completed")

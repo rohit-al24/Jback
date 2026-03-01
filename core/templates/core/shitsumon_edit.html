@@ -37,6 +37,55 @@
     const sel = document.getElementById('id_video_type');
     if (sel) sel.addEventListener('change', updateVideoFields);
   });
+
+  async function transcribeMondai() {
+    const btn = document.getElementById('btn_transcribe');
+    const status = document.getElementById('transcribe_status');
+    const textarea = document.getElementById('id_transcript');
+    const csrf = document.querySelector('input[name=csrfmiddlewaretoken]');
+    if (!btn || !status || !textarea || !csrf) return;
+
+    btn.disabled = true;
+    status.textContent = 'Transcribing… first time may download a model; long videos take longer.';
+
+    try {
+      const res = await fetch('{% url "shitsumon_transcribe" public_id=mondai.public_id %}', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrf.value,
+          'Accept': 'application/json',
+        },
+        credentials: 'same-origin',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data && data.detail ? data.detail : 'Transcription failed';
+        return;
+      }
+      textarea.value = data.transcript || '';
+      status.textContent = data && data.cached ? 'Filled from saved transcript' : 'Done';
+    } catch (e) {
+      status.textContent = 'Transcription failed';
+    } finally {
+      btn.disabled = false;
+      window.setTimeout(() => { status.textContent = ''; }, 3000);
+    }
+  }
+
+  function deleteQuestion(btn) {
+    if (!confirm('Delete this question?')) return;
+    const card = btn.closest('.card');
+    if (!card) return;
+    const del = card.querySelector('input[type=checkbox][name$="-DELETE"]');
+    if (del) del.checked = true;
+    // Submit the parent form
+    const form = btn.closest('form');
+    if (form) form.submit();
+  }
+
+  function confirmReset() {
+    return confirm('Remove ALL questions for this Mondai? This cannot be undone.');
+  }
 </script>
 {% endblock %}
 
@@ -82,7 +131,13 @@
         <div class="muted small" style="margin-top:6px">Paste a YouTube URL (watch/share/shorts). It will render as an embedded player for Sensei.</div>
       </div>
 
-      <label>Transcript</label>
+      <div class="row" style="align-items:center">
+        <div class="col"><label style="margin:0">Transcript</label></div>
+        <div class="col" style="display:flex; justify-content:flex-end; gap:10px; align-items:center">
+          <span id="transcribe_status" class="muted small"></span>
+          <button id="btn_transcribe" type="button" class="btn" onclick="transcribeMondai()">Transcribe</button>
+        </div>
+      </div>
       {{ form.transcript }}
       {% if form.transcript.errors %}<div class="muted small">{{ form.transcript.errors }}</div>{% endif %}
 
@@ -139,6 +194,25 @@
         <div class="col" style="display:flex; justify-content:flex-end"><button type="button" class="btn" onclick="addForm('q')">+ Add Question</button></div>
       </div>
 
+      <div style="height:10px"></div>
+      <div class="card" style="margin-top:12px">
+        <div class="h3">Import Questions (CSV/XLSX)</div>
+        <div class="muted small" style="margin-top:6px">
+          Required columns: <strong>Transcript Source</strong>, <strong>Target Word</strong>, <strong>Wrong 1</strong>, <strong>Wrong 2</strong>, <strong>Wrong 3</strong>, <strong>Correct Translation</strong>.
+          The importer shuffles options and auto-detects the correct answer.
+        </div>
+        <div style="height:10px"></div>
+        <div class="row" style="align-items:end">
+          <div class="col">
+            <label>Upload file</label>
+            <input type="file" name="questions_file" accept=".csv,.xlsx" />
+          </div>
+          <div class="col" style="display:flex; justify-content:flex-end">
+            <button class="btn" type="submit" name="action" value="import_questions">Import</button>
+          </div>
+        </div>
+      </div>
+
       {{ q_formset.management_form }}
 
       <div id="q_forms">
@@ -159,7 +233,12 @@
             <div class="row">
               <div class="col"><label>Correct Answer</label>{{ f.correct_answer }}{{ f.correct_answer.errors }}</div>
               <div class="col"><label>Order</label>{{ f.order }}</div>
-              <div class="col"><label>Delete</label>{{ f.DELETE }}</div>
+              <div class="col"><label>Delete</label>
+                <div style="display:flex; gap:8px; align-items:center">
+                  {{ f.DELETE }}
+                  <button type="button" class="btn" onclick="deleteQuestion(this)">Delete</button>
+                </div>
+              </div>
             </div>
           </div>
         {% endfor %}
@@ -191,6 +270,7 @@
     <div class="actions">
       <button class="btn" type="submit" name="action" value="save">Save Mondai</button>
       <button class="btn btn-primary" type="submit" name="action" value="submit">Submit for Approval</button>
+      <button class="btn" type="submit" name="action" value="reset_questions" onclick="return confirmReset()">Reset Questions</button>
     </div>
 
   </form>

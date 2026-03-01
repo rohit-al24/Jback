@@ -13,6 +13,8 @@ urlpatterns = [
     path("shitsumon/", portal_views.shitsumon_dashboard, name="shitsumon_dashboard"),
     path("shitsumon/new/", portal_views.shitsumon_create, name="shitsumon_create"),
     path("shitsumon/<str:public_id>/edit/", portal_views.shitsumon_edit, name="shitsumon_edit"),
+    path("shitsumon/<str:public_id>/fix-week/", portal_views.shitsumon_fix_week, name="shitsumon_fix_week"),
+    path("shitsumon/<str:public_id>/transcribe/", portal_views.shitsumon_transcribe, name="shitsumon_transcribe"),
 
     # Sensei (HTML)
     path("sensei/", portal_views.sensei_dashboard, name="sensei_dashboard"),
@@ -23,9 +25,27 @@ urlpatterns = [
     path("api/auth/register/", auth_views.register_view, name="register"),
     path("api/auth/login/", auth_views.login_view, name="login"),
     path("api/auth/logout/", auth_views.logout_view, name="logout"),
+    path("api/auth/totp/confirm/", auth_views.totp_confirm, name="totp_confirm"),
 
     path("api/daily-quiz/", views.daily_quiz, name="daily_quiz"),
     path("api/submit-answer/", views.submit_answer, name="submit_answer"),
+
+    # Real leaderboard + weekly (Mondai) study/quiz
+    path("api/leaderboard/", views.leaderboard, name="leaderboard"),
+    path("api/week/list/", views.fixed_week_list, name="fixed_week_list"),
+    path("api/week/current/", views.current_week_content, name="current_week_content"),
+    path("api/week/current/study/", views.week_study_questions, name="week_study_questions"),
+    path("api/week/current/quiz/", views.daily_week_quiz, name="daily_week_quiz"),
+    path("api/week/current/quiz/retake/", views.daily_week_quiz_retake, name="daily_week_quiz_retake"),
+    path("api/daily-task/", views.daily_task, name="daily_task"),
+    path("api/submit-mondai-answer/", views.submit_mondai_answer, name="submit_mondai_answer"),
+
+    # Email OTP endpoints
+    path("api/send-email-otp/", views.send_email_otp, name="send_email_otp"),
+    path("api/verify-email-otp/", views.verify_email_otp, name="verify_email_otp"),
+
+    path("api/quiz/history/", views.quiz_history, name="quiz_history"),
+    path("api/quiz/history/<str:date_str>/", views.quiz_history_detail, name="quiz_history_detail"),
     path("api/video/<int:weekly_content_id>/", views.protected_video, name="protected_video"),
     path(
         "api/video/<int:weekly_content_id>/completed/",
@@ -38,6 +58,7 @@ urlpatterns = [
     path("api/referrals/", referral_views.referral_dashboard, name="referral_dashboard"),
     path("api/reviews/due/", review_views.due_reviews, name="due_reviews"),
     path("api/colleges/", views.colleges_list, name="colleges_list"),
+    path("api/colleges/public/", views.colleges_public, name="colleges_public"),
     path("api/mondai/<str:public_id>/", views.mondai_detail, name="mondai_detail"),
 
     path("api/billing/plans/", billing_views.plans, name="plans"),

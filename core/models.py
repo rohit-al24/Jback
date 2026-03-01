@@ -54,6 +54,13 @@ class User(AbstractUser):
 		related_name="students",
 	)
 
+	# Optional 2FA via Google Authenticator (TOTP)
+	totp_secret = models.CharField(max_length=64, blank=True)
+	totp_enabled = models.BooleanField(default=False)
+
+	# Email verification flag
+	email_verified = models.BooleanField(default=False)
+
 	def save(self, *args, **kwargs):
 		if not self.referral_code:
 			self.referral_code = str(uuid.uuid4()).replace("-", "")[:8].upper()
@@ -81,10 +88,13 @@ class SubscriptionPlan(models.Model):
 
 
 class College(models.Model):
+	code = models.CharField(max_length=32, unique=True, null=True, blank=True)
 	name = models.CharField(max_length=200)
 	city = models.CharField(max_length=120, blank=True)
 
 	def __str__(self) -> str:
+		if self.code:
+			return f"{self.code} - {self.name}"
 		return self.name
 
 
@@ -233,6 +243,10 @@ class Mondai(models.Model):
 	reviewed_at = models.DateTimeField(null=True, blank=True)
 	review_note = models.TextField(blank=True)
 
+	# Scheduling: once approved, Shitsumon can fix a calendar week.
+	week_start_date = models.DateField(null=True, blank=True)
+	week_end_date = models.DateField(null=True, blank=True)
+
 	class Meta:
 		indexes = [
 			models.Index(fields=["status", "created_at"]),
@@ -251,6 +265,71 @@ class Mondai(models.Model):
 		return f"{self.public_id} - {self.name}"
 
 	@property
+	def is_week_fixed(self) -> bool:
+		return bool(self.week_start_date and self.week_end_date)
+
+
+class XPEvent(models.Model):
+	"""Append-only record of XP changes.
+
+	Used to power weekly leaderboards (XP earned within last 7 days).
+	"""
+
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="xp_events")
+	points = models.IntegerField()
+	reason = models.CharField(max_length=32)
+	created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+	class Meta:
+		indexes = [
+			models.Index(fields=["created_at"]),
+			models.Index(fields=["user", "created_at"]),
+		]
+
+	def __str__(self) -> str:
+		return f"XPEvent(user={self.user_id}, points={self.points}, reason={self.reason})"
+
+
+class DailyQuizTask(models.Model):
+	"""Tracks a per-user per-day target for quiz questions answered."""
+
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+	date = models.DateField(db_index=True)
+	target_questions = models.PositiveIntegerField(default=10)
+	answered_questions = models.PositiveIntegerField(default=0)
+	rewarded = models.BooleanField(default=False)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		constraints = [
+			models.UniqueConstraint(fields=["user", "date"], name="unique_daily_quiz_task"),
+		]
+		indexes = [models.Index(fields=["user", "date"]) ]
+
+	def __str__(self) -> str:
+		return f"DailyQuizTask(user={self.user_id}, date={self.date}, answered={self.answered_questions}/{self.target_questions})"
+
+
+class MondaiAnswerAttempt(models.Model):
+	"""Stores student attempts for MondaiQuestion answers (used for tasks + analytics)."""
+
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+	mondai_question = models.ForeignKey("MondaiQuestion", on_delete=models.CASCADE)
+	date = models.DateField(db_index=True)
+	selected = models.CharField(max_length=1)
+	correct = models.BooleanField(default=False)
+	created_at = models.DateTimeField(default=timezone.now)
+
+	class Meta:
+		constraints = [
+			models.UniqueConstraint(fields=["user", "mondai_question", "date"], name="unique_mondai_attempt_per_day"),
+		]
+		indexes = [
+			models.Index(fields=["user", "date"]),
+			models.Index(fields=["mondai_question", "date"]),
+		]
+
+	@property
 	def display_video(self) -> dict:
 		"""Template-friendly representation of video source."""
 		def _youtube_embed_url(url: str) -> str | None:
@@ -262,7 +341,7 @@ class Mondai(models.Model):
 			- https://www.youtube.com/shorts/VIDEO_ID
 			- https://www.youtube.com/embed/VIDEO_ID
 			"""
-			from urllib.parse import parse_qs, urlparse
+			from urllib.parse import parse_qs, urlencode, urlparse
 
 			try:
 				p = urlparse(url)
@@ -272,12 +351,15 @@ class Mondai(models.Model):
 			host = (p.hostname or "").lower()
 			path = p.path or ""
 			video_id: str | None = None
+			qs = parse_qs(p.query)
+			list_id = (qs.get("list") or [None])[0]
+			start = (qs.get("start") or [None])[0]
+			t = (qs.get("t") or [None])[0]
 
 			if host in {"youtu.be"}:
 				video_id = path.lstrip("/").split("/")[0] or None
 			elif host.endswith("youtube.com") or host.endswith("youtube-nocookie.com"):
 				if path == "/watch":
-					qs = parse_qs(p.query)
 					video_id = (qs.get("v") or [None])[0]
 				elif path.startswith("/embed/"):
 					video_id = path.split("/embed/", 1)[1].split("/")[0] or None
@@ -293,7 +375,24 @@ class Mondai(models.Model):
 			if not video_id:
 				return None
 
-			return f"https://www.youtube.com/embed/{video_id}"
+			params: dict[str, str] = {}
+			# Preserve playlist context for share links like youtu.be/<id>?list=...
+			if isinstance(list_id, str) and list_id:
+				params["list"] = list_id
+			# Preserve start time if present (supports ?start=123 or ?t=123)
+			start_value: str | None = None
+			if isinstance(start, str) and start.isdigit():
+				start_value = start
+			elif isinstance(t, str):
+				# Accept simple "123" or "123s" forms.
+				t_clean = t.strip().lower().removesuffix("s")
+				if t_clean.isdigit():
+					start_value = t_clean
+			if start_value:
+				params["start"] = start_value
+
+			q = f"?{urlencode(params)}" if params else ""
+			return f"https://www.youtube.com/embed/{video_id}{q}"
 
 		if self.video_type == self.VideoType.UPLOAD and self.video_file:
 			return {"type": "upload", "url": self.video_file.url}
@@ -305,6 +404,26 @@ class Mondai(models.Model):
 		if self.video_type == self.VideoType.EMBED and self.video_embed_url:
 			# Backward compatibility: treat legacy embed URLs as-is.
 			return {"type": "embed", "url": self.video_embed_url}
+
+
+class EmailOTP(models.Model):
+	"""Stores one-time email verification codes."""
+
+	email = models.EmailField(db_index=True)
+	otp_hash = models.CharField(max_length=128)
+	created_at = models.DateTimeField(auto_now_add=True)
+	expires_at = models.DateTimeField(db_index=True)
+	used = models.BooleanField(default=False)
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+
+	class Meta:
+		indexes = [
+			models.Index(fields=["email", "expires_at"]),
+			models.Index(fields=["user"]),
+		]
+
+	def __str__(self) -> str:
+		return f"EmailOTP(email={self.email}, used={self.used}, expires={self.expires_at})"
 		return {"type": "none"}
 
 

@@ -1,5 +1,7 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.shortcuts import redirect, render
+from django.urls import path
 
 from .models import (
 	College,
@@ -134,10 +136,86 @@ class MondaiQuestionAdmin(admin.ModelAdmin):
 
 @admin.register(College)
 class CollegeAdmin(admin.ModelAdmin):
-	list_display = ("name", "city", "student_count")
-	search_fields = ("name", "city")
+	change_list_template = "admin/core/college/change_list.html"
+	list_display = ("code", "name", "city", "student_count")
+	search_fields = ("code", "name", "city")
 	list_filter = ("city",)
 	
 	def student_count(self, obj):
 		return obj.students.count()
 	student_count.short_description = "Students"
+
+	def get_urls(self):
+		urls = super().get_urls()
+		custom = [
+			path(
+				"import/",
+				self.admin_site.admin_view(self.import_colleges_view),
+				name="core_college_import",
+			),
+		]
+		return custom + urls
+
+	def import_colleges_view(self, request):
+		if request.method == "POST":
+			f = request.FILES.get("file")
+			if not f:
+				messages.error(request, "Please choose an Excel/CSV file")
+				return redirect("..")
+
+			try:
+				import pandas as pd
+			except Exception:
+				messages.error(request, "Missing dependency: pandas")
+				return redirect("..")
+
+			name = (getattr(f, "name", "") or "").lower()
+			try:
+				if name.endswith(".csv"):
+					df = pd.read_csv(f, header=None)
+				else:
+					df = pd.read_excel(f, header=None)
+			except Exception as e:
+				messages.error(request, f"Failed to read file: {e}")
+				return redirect("..")
+
+			if df.shape[1] < 2:
+				messages.error(request, "File must have at least 2 columns: code, name")
+				return redirect("..")
+
+			created = 0
+			updated = 0
+			skipped = 0
+			for _, row in df.iterrows():
+				code = str(row.iloc[0]).strip() if row.iloc[0] is not None else ""
+				college_name = str(row.iloc[1]).strip() if row.iloc[1] is not None else ""
+				if code.lower() in {"nan", "none"}:
+					code = ""
+				if college_name.lower() in {"nan", "none"}:
+					college_name = ""
+				code = code.strip().upper()
+				college_name = college_name.strip()
+				if not code or not college_name:
+					skipped += 1
+					continue
+
+				obj, was_created = College.objects.update_or_create(
+					code=code,
+					defaults={"name": college_name},
+				)
+				if was_created:
+					created += 1
+				else:
+					updated += 1
+
+			messages.success(
+				request,
+				f"Import completed: {created} created, {updated} updated, {skipped} skipped",
+			)
+			return redirect("..")
+
+		context = dict(
+			self.admin_site.each_context(request),
+			title="Import Colleges",
+		)
+		return render(request, "admin/core/college/import_colleges.html", context)

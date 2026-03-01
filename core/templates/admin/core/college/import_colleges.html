@@ -1,0 +1,23 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <h1>Import Colleges</h1>
+
+    <p>
+      Upload an Excel/CSV file where the <strong>first column</strong> is the college code and the
+      <strong>second column</strong> is the college name.
+    </p>
+
+    <form method="post" enctype="multipart/form-data" style="margin-top: 1rem;">
+      {% csrf_token %}
+      <div>
+        <input type="file" name="file" accept=".xlsx,.xls,.csv" required />
+      </div>
+      <div style="margin-top: 1rem;">
+        <button type="submit" class="default">Import</button>
+        <a href="../" class="button cancel-link">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

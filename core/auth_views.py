@@ -4,8 +4,12 @@ import json
 
 from django.contrib.auth import authenticate, login, logout
 from django.http import HttpRequest, JsonResponse
+from django.core import signing
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils import timezone
+
+import pyotp
 
 
 def _user_payload(user) -> dict:
@@ -57,12 +61,29 @@ def register_view(request: HttpRequest) -> JsonResponse:
 
     if not username or not password:
         return JsonResponse({"detail": "username and password required"}, status=400)
+    if not email:
+        return JsonResponse({"detail": "email required"}, status=400)
+
+    # Enforce email OTP verification before account creation.
+    verified_email = (request.session.get("email_otp_verified_email") or "").strip().lower()
+    verified_until = (request.session.get("email_otp_verified_until") or "").strip()
+    if not verified_email or verified_email != (email or "").strip().lower():
+        return JsonResponse({"detail": "Verify your email OTP before creating an account"}, status=400)
+    if verified_until:
+        try:
+            until_dt = timezone.datetime.fromisoformat(verified_until)
+            if timezone.is_naive(until_dt):
+                until_dt = timezone.make_aware(until_dt)
+            if timezone.now() > until_dt:
+                return JsonResponse({"detail": "Email OTP verification expired. Please resend OTP."}, status=400)
+        except Exception:
+            return JsonResponse({"detail": "Email OTP verification expired. Please resend OTP."}, status=400)
 
     from .models import User
 
     if User.objects.filter(username=username).exists():
         return JsonResponse({"detail": "Username already exists"}, status=400)
-    if email and User.objects.filter(email__iexact=email).exists():
+    if User.objects.filter(email__iexact=email).exists():
         return JsonResponse({"detail": "Email already registered"}, status=400)
 
     referred_by = None
@@ -91,7 +112,12 @@ def register_view(request: HttpRequest) -> JsonResponse:
         user.target_level = target_level
     user.referred_by = referred_by
     user.set_password(password)
+    user.email_verified = True
     user.save()
+
+    # Clear session flag after successful account creation.
+    request.session.pop("email_otp_verified_email", None)
+    request.session.pop("email_otp_verified_until", None)
 
     # Default new users to the "student" role.
     try:
@@ -103,6 +129,7 @@ def register_view(request: HttpRequest) -> JsonResponse:
         # Don't block registration if the auth tables aren't ready yet.
         pass
 
+    # Log the user in directly after account creation (TOTP setup removed)
     login(request, user)
     return JsonResponse({"authenticated": True, "user": _user_payload(user)})
 
@@ -133,6 +160,62 @@ def login_view(request: HttpRequest) -> JsonResponse:
     user = authenticate(request, username=username_for_auth, password=password)
     if user is None:
         return JsonResponse({"detail": "Invalid credentials"}, status=400)
+
+    # If TOTP is enabled, require an OTP code from Google Authenticator.
+    if getattr(user, "totp_enabled", False):
+        otp = (payload.get("otp") or "").strip().replace(" ", "")
+        if not otp:
+            return JsonResponse({"detail": "OTP required", "otp_required": True, "code": "otp_required"}, status=400)
+        secret = getattr(user, "totp_secret", "") or ""
+        if not secret:
+            return JsonResponse({"detail": "OTP not configured"}, status=400)
+        totp = pyotp.TOTP(secret)
+        if not totp.verify(otp, valid_window=1):
+            return JsonResponse({"detail": "Invalid OTP", "otp_required": True, "code": "otp_required"}, status=400)
+
+    login(request, user)
+    return JsonResponse({"authenticated": True, "user": _user_payload(user)})
+
+
+def totp_confirm(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"detail": "POST required"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+    setup_token = (payload.get("setup_token") or "").strip()
+    otp = (payload.get("otp") or "").strip().replace(" ", "")
+    if not setup_token or not otp:
+        return JsonResponse({"detail": "setup_token and otp required"}, status=400)
+
+    try:
+        data = signing.loads(setup_token, salt="totp-setup", max_age=15 * 60)
+        uid = int(data.get("uid"))
+    except Exception:
+        return JsonResponse({"detail": "Setup token expired or invalid"}, status=400)
+
+    from .models import User
+
+    user = User.objects.filter(id=uid).first()
+    if not user:
+        return JsonResponse({"detail": "User not found"}, status=400)
+    if user.totp_enabled:
+        # Already enabled; just log in.
+        login(request, user)
+        return JsonResponse({"authenticated": True, "user": _user_payload(user)})
+
+    if not user.totp_secret:
+        return JsonResponse({"detail": "OTP not configured"}, status=400)
+
+    totp = pyotp.TOTP(user.totp_secret)
+    if not totp.verify(otp, valid_window=1):
+        return JsonResponse({"detail": "Invalid OTP"}, status=400)
+
+    user.totp_enabled = True
+    user.save(update_fields=["totp_enabled"])
 
     login(request, user)
     return JsonResponse({"authenticated": True, "user": _user_payload(user)})
