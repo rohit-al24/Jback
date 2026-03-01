@@ -46,6 +46,9 @@ CSRF_TRUSTED_ORIGINS = [
     # Capacitor / Android WebView origin (Capacitor serves the app from localhost)
     "http://localhost",
     "http://127.0.0.1",
+    # Android WebView often uses https://localhost as the app origin
+    "https://localhost",
+    "https://127.0.0.1",
     # Some Capacitor/Ionic builds use a custom scheme origin
     "capacitor://localhost",
     "ionic://localhost",
@@ -59,6 +62,8 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http://localhost(?::\\d+)?$",
     r"^http://127\\.0\\.0\\.1(?::\\d+)?$",
+    r"^https://localhost(?::\\d+)?$",
+    r"^https://127\\.0\\.0\\.1(?::\\d+)?$",
     r"^capacitor://localhost$",
     r"^ionic://localhost$",
 ]
