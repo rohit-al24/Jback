@@ -28,8 +28,9 @@ from .models import (
 	User,
 	VideoCompletion,
 	WeeklyContent,
-    EmailOTP,
+	EmailOTP,
 )
+from course.models import Level, Unit, VocabularyItem, GrammarContent
 from .models import College
 from .services import schedule_two_reviews_for_wrong_answer
 from .streaks import touch_study_streak
@@ -926,4 +927,567 @@ def mondai_detail(request: HttpRequest, public_id: str) -> JsonResponse:
 
 	return JsonResponse({'mondai': data})
 
-# Create your views here.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Course System APIs
+# ─────────────────────────────────────────────────────────────────────────────
+
+@api_login_required
+def levels_list(request: HttpRequest) -> JsonResponse:
+	"""Return list of all active levels."""
+	levels = Level.objects.filter(is_active=True).order_by('order', 'level_number')
+	data = [
+		{
+			'id': level.id,
+			'level_number': level.level_number,
+			'name': level.name or f'Level {level.level_number}',
+			'description': level.description,
+		}
+		for level in levels
+	]
+	return JsonResponse({'levels': data})
+
+
+@api_login_required
+def units_list(request: HttpRequest, level_id: int) -> JsonResponse:
+	"""Return list of units for a given level."""
+	level = get_object_or_404(Level, pk=level_id, is_active=True)
+	units = level.units.filter(is_active=True).order_by('order', 'unit_number')
+	
+	data = [
+		{
+			'id': unit.id,
+			'unit_number': unit.unit_number,
+			'name': unit.name or f'Unit {unit.unit_number}',
+			'description': unit.description,
+			'vocab_count': unit.vocabulary.count(),
+			'grammar_count': unit.grammar.count(),
+		}
+		for unit in units
+	]
+	return JsonResponse({
+		'level': {
+			'id': level.id,
+			'level_number': level.level_number,
+			'name': level.name or f'Level {level.level_number}',
+		},
+		'units': data
+	})
+
+
+@api_login_required
+def vocabulary_study(request: HttpRequest, unit_id: int) -> JsonResponse:
+	"""Return vocabulary items for study mode (target + correct translation only)."""
+	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
+	vocab = unit.vocabulary.all().order_by('order', 'id')
+	
+	data = [
+		{
+			'id': item.id,
+			'target': item.target,
+			'correct': item.correct,
+		}
+		for item in vocab
+	]
+	
+	return JsonResponse({
+		'unit': {
+			'id': unit.id,
+			'unit_number': unit.unit_number,
+			'name': unit.name or f'Unit {unit.unit_number}',
+			'level': unit.level.name or f'Level {unit.level.level_number}',
+		},
+		'vocabulary': data
+	})
+
+
+@api_login_required
+def vocabulary_quiz(request: HttpRequest, unit_id: int) -> JsonResponse:
+	"""Return shuffled quiz questions for a unit's vocabulary."""
+	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
+	vocab = unit.vocabulary.all().order_by('order', 'id')
+	
+	questions = []
+	for item in vocab:
+		# Shuffle options based on the pre-calculated correct_answer field
+		# The correct_answer field tells us which slot (A-D) has the correct answer
+		options_map = {
+			'A': item.correct,
+			'B': item.wrong1,
+			'C': item.wrong2,
+			'D': item.wrong3,
+		}
+		
+		# Shuffle the options randomly for display
+		option_keys = ['A', 'B', 'C', 'D']
+		random.shuffle(option_keys)
+		
+		shuffled_options = {key: options_map[key] for key in option_keys}
+		
+		# Find which shuffled position has the correct answer
+		correct_answer_key = None
+		for key in option_keys:
+			if shuffled_options[key] == item.correct:
+				correct_answer_key = key
+				break
+		
+		questions.append({
+			'id': item.id,
+			'target': item.target,
+			'options': shuffled_options,
+			'correct_answer': correct_answer_key,
+		})
+	
+	return JsonResponse({
+		'unit': {
+			'id': unit.id,
+			'unit_number': unit.unit_number,
+			'name': unit.name or f'Unit {unit.unit_number}',
+			'level': unit.level.name or f'Level {unit.level.level_number}',
+		},
+		'questions': questions
+	})
+
+
+@api_login_required
+def grammar_view(request: HttpRequest, unit_id: int) -> JsonResponse:
+	"""Return grammar content for a unit."""
+	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
+	grammar = unit.grammar.all().order_by('order', 'id')
+	
+	data = [
+		{
+			'id': item.id,
+			'title': item.title,
+			'content': item.content,
+		}
+		for item in grammar
+	]
+	
+	return JsonResponse({
+		'unit': {
+			'id': unit.id,
+			'unit_number': unit.unit_number,
+			'name': unit.name or f'Unit {unit.unit_number}',
+			'level': unit.level.name or f'Level {unit.level.level_number}',
+		},
+		'grammar': data
+	})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers for Adaptive Quiz
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_adaptive_options(vocab, all_vocab: list, states: dict, mode: str) -> dict:
+	"""Build answer options using smart distractor logic.
+
+	Normal mode: prompt=Hiragana, options=English meanings.
+	Flip mode:   prompt=English, options=Hiragana targets.
+
+	Distractor priority (normal): weak words first, then phonetically-similar
+	(same first kana), then any other unit words, then vocab's own wrong* fields.
+	Distractor priority (flip): same logic but for hiragana targets.
+	"""
+	import random
+
+	is_flip = mode in ('flip', 'speed_flip')
+	target_start = (vocab.target or '')[:1]
+
+	if is_flip:
+		# Options are hiragana — correct = vocab.target, wrongs = other hiragana
+		correct_val = vocab.target
+		prompt_val  = vocab.correct
+
+		weak_pool, phonetic_pool, other_pool = [], [], []
+		for v in all_vocab:
+			if v.id == vocab.id:
+				continue
+			st = states.get(v.id)
+			if st and st.is_weak:
+				weak_pool.append(v.target)
+			elif (v.target or '')[:1] == target_start:
+				phonetic_pool.append(v.target)
+			else:
+				other_pool.append(v.target)
+	else:
+		# Options are English — correct = vocab.correct, wrongs = other English
+		correct_val = vocab.correct
+		prompt_val  = vocab.target
+
+		weak_pool, phonetic_pool, other_pool = [], [], []
+		for v in all_vocab:
+			if v.id == vocab.id:
+				continue
+			st = states.get(v.id)
+			if st and st.is_weak:
+				weak_pool.append(v.correct)
+			elif (v.target or '')[:1] == target_start:
+				phonetic_pool.append(v.correct)
+			else:
+				other_pool.append(v.correct)
+
+	# Fill from own wrong fields as fallback
+	own_wrongs = [vocab.wrong1, vocab.wrong2, vocab.wrong3]
+
+	chosen: list[str] = []
+	seen: set[str] = {correct_val}
+	for pool in (weak_pool, phonetic_pool, other_pool, own_wrongs):
+		random.shuffle(pool)
+		for d in pool:
+			if d and d not in seen:
+				chosen.append(d)
+				seen.add(d)
+			if len(chosen) == 3:
+				break
+		if len(chosen) == 3:
+			break
+
+	# Pad if not enough unique distractors
+	idx = 1
+	while len(chosen) < 3:
+		placeholder = f'—{idx}—'
+		if placeholder not in seen:
+			chosen.append(placeholder)
+		idx += 1
+
+	all_choices = [correct_val] + chosen[:3]
+	random.shuffle(all_choices)
+
+	letters = ['A', 'B', 'C', 'D']
+	correct_answer = letters[all_choices.index(correct_val)]
+
+	return {
+		'prompt': prompt_val,
+		'choices': {l: v for l, v in zip(letters, all_choices)},
+		'correct_answer': correct_answer,
+	}
+
+
+def _get_surprise_review_items(user, exclude_unit_id: int) -> list[dict]:
+	"""Return up to 3 overdue items from units OTHER than current unit."""
+	from course.models import UserVocabState
+
+	now = timezone.now()
+	overdue = (
+		UserVocabState.objects
+		.select_related('vocab_item', 'vocab_item__unit')
+		.filter(user=user, due_at__lte=now, mastered=False)
+		.exclude(vocab_item__unit_id=exclude_unit_id)
+		.order_by('due_at')[:3]
+	)
+
+	items = []
+	for st in overdue:
+		v = st.vocab_item
+		timer_map = {'normal': 10, 'flip': 5, 'speed': 2}
+		opts = _build_adaptive_options(v, [], {}, st.mode)
+		items.append({
+			'vocab_id': v.id,
+			'prompt': opts['prompt'],
+			'prompt_type': 'english' if st.mode in ('flip', 'speed_flip') else 'hiragana',
+			'options': opts['choices'],
+			'correct_answer': opts['correct_answer'],
+			'mode': st.mode,
+			'timer_seconds': timer_map.get(st.mode, 10),
+			'streak_correct': st.streak_correct,
+			'lapses': st.lapses,
+			'mastered': False,
+			'is_surprise': True,
+			'unit_name': v.unit.name or f'Unit {v.unit.unit_number}',
+		})
+	return items
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Adaptive Quiz APIs
+# ─────────────────────────────────────────────────────────────────────────────
+
+@api_login_required
+def adaptive_quiz_session(request: HttpRequest, unit_id: int) -> JsonResponse:
+	"""Build an adaptive quiz session for a unit.
+
+	Returns vocab items sorted by learning priority with mode, timer, and smart options.
+	GET params:
+	  ?exam=N5  (optional)
+	"""
+	user: User = request.user  # type: ignore[assignment]
+	exam_code = (request.GET.get('exam') or '').strip().upper()
+
+	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
+
+	vocab_qs = VocabularyItem.objects.filter(unit=unit)
+	if exam_code:
+		from administration.models import Exam
+		try:
+			exam_obj = Exam.objects.get(code=exam_code)
+			vocab_qs = vocab_qs.filter(exam=exam_obj)
+		except Exam.DoesNotExist:
+			pass
+	vocab_list = list(vocab_qs.order_by('order', 'id'))
+
+	if not vocab_list:
+		return JsonResponse({'detail': 'No vocabulary found for this unit/exam'}, status=404)
+
+	vocab_ids = [v.id for v in vocab_list]
+
+	from course.models import UserVocabState
+	states: dict = {
+		s.vocab_item_id: s
+		for s in UserVocabState.objects.filter(user=user, vocab_item_id__in=vocab_ids)
+	}
+
+	now = timezone.now()
+	timer_map = {'normal': 10, 'flip': 5, 'speed': 2}
+
+	session_items = []
+	mastered_count = 0
+	for vocab in vocab_list:
+		st = states.get(vocab.id)
+		if st:
+			is_overdue = bool(st.due_at and st.due_at <= now)
+			if st.mastered and not is_overdue:
+				mastered_count += 1
+				continue  # already mastered & not due for surprise review
+			if is_overdue:
+				priority = 10
+			elif st.is_weak:
+				priority = 7
+			elif st.streak_correct == 0 and st.lapses == 0:
+				priority = 4  # unseen but state exists
+			else:
+				priority = 2
+			mode   = st.mode
+			streak = st.streak_correct
+			lapses = st.lapses
+			mastered = st.mastered
+		else:
+			priority = 4  # unseen
+			mode     = 'normal'
+			streak   = 0
+			lapses   = 0
+			mastered  = False
+
+		opts = _build_adaptive_options(vocab, vocab_list, states, mode)
+		session_items.append({
+			'vocab_id':      vocab.id,
+			'prompt':        opts['prompt'],
+			'prompt_type':   'english' if mode in ('flip',) else 'hiragana',
+			'options':       opts['choices'],
+			'correct_answer': opts['correct_answer'],
+			'mode':          mode,
+			'timer_seconds': timer_map.get(mode, 10),
+			'streak_correct': streak,
+			'lapses':        lapses,
+			'mastered':      mastered,
+			'priority':      priority,
+		})
+
+	# Sort: highest priority first
+	session_items.sort(key=lambda x: -x['priority'])
+
+	total = len(vocab_list)
+	mastery_pct = int(mastered_count / total * 100) if total else 0
+
+	# Surprise reviews from other units
+	surprise = _get_surprise_review_items(user, unit.id)
+
+	return JsonResponse({
+		'unit': {
+			'id': unit.id,
+			'unit_number': unit.unit_number,
+			'name': unit.name or f'Unit {unit.unit_number}',
+			'level': unit.level.name or f'Level {unit.level.level_number}',
+		},
+		'exam': exam_code,
+		'items': session_items,
+		'surprise_review': surprise,
+		'total_vocab': total,
+		'mastered_count': mastered_count,
+		'mastery_percent': mastery_pct,
+	})
+
+
+@api_login_required
+def vocab_state_submit(request: HttpRequest) -> JsonResponse:
+	"""Submit a vocabulary quiz answer and update the user's learning state.
+
+	POST body: { vocab_id, correct (bool), mode }
+	Returns updated state + next recommended timer.
+	"""
+	if request.method != 'POST':
+		return JsonResponse({'detail': 'POST required'}, status=405)
+
+	user: User = request.user  # type: ignore[assignment]
+	try:
+		payload = json.loads(request.body.decode('utf-8'))
+	except Exception:
+		return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+	vocab_id = payload.get('vocab_id')
+	correct  = bool(payload.get('correct', False))
+	mode     = (payload.get('mode') or 'normal').strip()
+
+	if not vocab_id:
+		return JsonResponse({'detail': 'vocab_id required'}, status=400)
+
+	from course.models import UserVocabState, VocabularyItem as VI
+	try:
+		vocab = VI.objects.get(id=vocab_id)
+	except VI.DoesNotExist:
+		return JsonResponse({'detail': 'Vocab not found'}, status=404)
+
+	st, _ = UserVocabState.objects.get_or_create(
+		user=user,
+		vocab_item=vocab,
+	)
+
+	now = timezone.now()
+	st.last_answered_at = now
+
+	if correct:
+		st.streak_correct += 1
+		st.is_weak = False
+
+		if mode == 'normal':
+			st.streak_normal += 1
+
+		# Mode progression
+		MODE_NORMAL = UserVocabState.Mode.NORMAL
+		MODE_FLIP   = UserVocabState.Mode.FLIP
+		MODE_SPEED  = UserVocabState.Mode.SPEED
+
+		if mode == 'normal' and st.streak_normal >= 3:
+			# Promote to Flip mode
+			st.mode = MODE_FLIP
+			st.streak_correct = 0  # reset streak for new challenge
+		elif mode == 'flip' and st.streak_correct >= 2:
+			# Promote to Speed mode
+			st.mode = MODE_SPEED
+			st.streak_correct = 0
+		elif mode == 'speed' and st.streak_correct >= 2:
+			# Mastered!
+			st.mastered = True
+			award_xp(user_id=user.pk, points=20, reason='vocab_mastered')
+
+		# Extend spaced-repetition interval
+		from datetime import timedelta as _td
+		st.half_life_days = min(float(st.half_life_days) * 2.0, 365.0)
+		st.due_at = now + _td(days=float(st.half_life_days))
+
+		# XP per mode
+		xp_by_mode = {'normal': 2, 'flip': 5, 'speed': 10}
+		award_xp(user_id=user.pk, points=xp_by_mode.get(mode, 2), reason='vocab_correct')
+
+	else:
+		# Wrong answer
+		st.lapses        += 1
+		st.streak_correct = 0
+		st.is_weak        = True
+
+		# Downgrade on wrong in advanced modes
+		if mode == 'speed':
+			st.mode = UserVocabState.Mode.FLIP
+			# Keep some progress: streak_normal stays so flip is still unlocked
+		elif mode == 'flip':
+			st.mode = UserVocabState.Mode.NORMAL
+			st.streak_normal = max(0, int(st.streak_normal) - 1)
+
+		st.due_at         = now  # immediately due (overdue)
+		st.half_life_days = max(0.5, float(st.half_life_days) * 0.5)
+
+	st.save()
+
+	timer_map = {'normal': 10, 'flip': 5, 'speed': 2}
+	return JsonResponse({
+		'vocab_id':       vocab_id,
+		'correct':        correct,
+		'streak_correct': st.streak_correct,
+		'streak_normal':  st.streak_normal,
+		'lapses':         st.lapses,
+		'is_weak':        st.is_weak,
+		'mode':           st.mode,
+		'timer_seconds':  timer_map.get(st.mode, 10),
+		'mastered':       st.mastered,
+		'due_at':         st.due_at.isoformat() if st.due_at else None,
+	})
+
+
+@api_login_required
+def unit_mastery(request: HttpRequest, unit_id: int) -> JsonResponse:
+	"""Return mastery breakdown for the Growth Visualizer.
+
+	Each stage is weighted for a smooth 0–100% growth bar:
+	  unseen=0, normal=15, flip=50, speed=80, mastered=100
+	"""
+	user: User = request.user  # type: ignore[assignment]
+	exam_code = (request.GET.get('exam') or '').strip().upper()
+
+	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
+	vocab_qs = VocabularyItem.objects.filter(unit=unit)
+	if exam_code:
+		from administration.models import Exam
+		try:
+			exam_obj = Exam.objects.get(code=exam_code)
+			vocab_qs = vocab_qs.filter(exam=exam_obj)
+		except Exam.DoesNotExist:
+			pass
+
+	total = vocab_qs.count()
+	if total == 0:
+		return JsonResponse({'mastery_percent': 0, 'mastered': 0, 'total': 0, 'breakdown': {}})
+
+	vocab_ids = list(vocab_qs.values_list('id', flat=True))
+	from course.models import UserVocabState
+	qs = UserVocabState.objects.filter(user=user, vocab_item_id__in=vocab_ids)
+
+	n_mastered = qs.filter(mastered=True).count()
+	n_speed    = qs.filter(mode='speed', mastered=False).count()
+	n_flip     = qs.filter(mode='flip', mastered=False).count()
+	n_normal   = qs.filter(mode='normal', mastered=False).count()
+	n_unseen   = total - qs.count()
+
+	score = (
+		n_mastered * 100 +
+		n_speed    * 80 +
+		n_flip     * 50 +
+		n_normal   * 15 +
+		n_unseen   * 0
+	)
+	mastery_pct = int(score / total) if total else 0
+
+	return JsonResponse({
+		'unit_id':        unit_id,
+		'exam':           exam_code,
+		'total':          total,
+		'mastered':       n_mastered,
+		'mastery_percent': mastery_pct,
+		'breakdown': {
+			'mastered': n_mastered,
+			'speed':    n_speed,
+			'flip':     n_flip,
+			'normal':   n_normal,
+			'unseen':   n_unseen,
+		},
+	})
+
+
+@api_login_required
+def update_growth_theme(request: HttpRequest) -> JsonResponse:
+	"""POST { growth_theme: 'bodybuilder'|'tree'|'city' } to set user's visualizer theme."""
+	if request.method != 'POST':
+		return JsonResponse({'detail': 'POST required'}, status=405)
+
+	try:
+		payload = json.loads(request.body.decode('utf-8'))
+	except Exception:
+		return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+	theme = (payload.get('growth_theme') or '').strip().lower()
+	valid = {'bodybuilder', 'tree', 'city'}
+	if theme not in valid:
+		return JsonResponse({'detail': f'Invalid theme. Choose from: {", ".join(sorted(valid))}'}, status=400)
+
+	user: User = request.user  # type: ignore[assignment]
+	User.objects.filter(pk=user.pk).update(growth_theme=theme)
+	return JsonResponse({'growth_theme': theme})

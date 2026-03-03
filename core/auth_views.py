@@ -11,6 +11,8 @@ from django.utils import timezone
 
 import pyotp
 
+from .decorators import api_login_required
+from .models import User
 
 def _user_payload(user) -> dict:
     return {
@@ -25,6 +27,7 @@ def _user_payload(user) -> dict:
         "subscription_status": getattr(user, "subscription_status", None),
         "streak_count": getattr(user, "streak_count", None),
         "referral_code": getattr(user, "referral_code", None),
+        "growth_theme": getattr(user, "growth_theme", "bodybuilder"),
     }
 
 
@@ -227,3 +230,23 @@ def logout_view(request: HttpRequest) -> JsonResponse:
 
     logout(request)
     return JsonResponse({"authenticated": False})
+
+
+@api_login_required
+def update_growth_theme(request: HttpRequest) -> JsonResponse:
+    """POST { growth_theme: 'bodybuilder'|'tree'|'city' } — update user's visualizer theme."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "POST required"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+    theme = (payload.get("growth_theme") or "").strip().lower()
+    valid = {"bodybuilder", "tree", "city"}
+    if theme not in valid:
+        return JsonResponse({"detail": f"Invalid theme. Choose from: {', '.join(sorted(valid))}"}, status=400)
+
+    User.objects.filter(pk=request.user.pk).update(growth_theme=theme)
+    return JsonResponse({"growth_theme": theme})

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import auth_views, billing_views, path_views, portal_views, referral_views, review_views, views
+from payments import views as payments_views
 
 
 urlpatterns = [
@@ -61,7 +62,24 @@ urlpatterns = [
     path("api/colleges/public/", views.colleges_public, name="colleges_public"),
     path("api/mondai/<str:public_id>/", views.mondai_detail, name="mondai_detail"),
 
+    # Course System APIs
+    path("api/course/levels/", views.levels_list, name="levels_list"),
+    path("api/course/level/<int:level_id>/units/", views.units_list, name="units_list"),
+    path("api/course/unit/<int:unit_id>/vocabulary/study/", views.vocabulary_study, name="vocabulary_study"),
+    path("api/course/unit/<int:unit_id>/vocabulary/quiz/", views.vocabulary_quiz, name="vocabulary_quiz"),
+    path("api/course/unit/<int:unit_id>/grammar/", views.grammar_view, name="grammar_view"),
+    path("api/course/unit/<int:unit_id>/adaptive-quiz/", views.adaptive_quiz_session, name="adaptive_quiz_session"),
+    path("api/course/vocab-state/submit/", views.vocab_state_submit, name="vocab_state_submit"),
+    path("api/course/unit/<int:unit_id>/mastery/", views.unit_mastery, name="unit_mastery"),
+    path("api/auth/growth-theme/", auth_views.update_growth_theme, name="update_growth_theme"),
+
     path("api/billing/plans/", billing_views.plans, name="plans"),
+    path("api/billing/cashfree-order/", billing_views.cashfree_create_order, name="cashfree_create_order"),
+    path("api/billing/cashfree-webhook/", billing_views.cashfree_webhook, name="cashfree_webhook"),
+    path("api/billing/cashfree-verify/", billing_views.cashfree_verify, name="cashfree_verify"),
+
+    # Master payments feature flag (DB-driven)
+    path("api/payments/master/", payments_views.master_payments, name="master_payments"),
     path(
         "api/billing/checkout-session/",
         billing_views.create_checkout_session,

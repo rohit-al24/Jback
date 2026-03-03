@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AdminPermission, Role, RolePermission, UserRole
+from .models import AdminPermission, Role, RolePermission, UserRole, Exam
 
 
 @admin.register(AdminPermission)
@@ -30,3 +30,11 @@ class UserRoleAdmin(admin.ModelAdmin):
 	list_filter = ("role",)
 	search_fields = ("user__username", "role__name")
 	autocomplete_fields = ("user", "role")
+
+
+@admin.register(Exam)
+class ExamAdmin(admin.ModelAdmin):
+	list_display = ("code", "name", "is_active", "order", "created_at")
+	list_filter = ("is_active",)
+	search_fields = ("code", "name")
+	ordering = ("order", "code")

@@ -1,0 +1,14 @@
+unit_number,exam_code,title,content
+1,N5,Basic Sentence Pattern: Noun 1 wa Noun 2 desu,"The most basic sentence pattern in Japanese:
+
+[Noun 1] は [Noun 2] です
+(Noun 1 wa Noun 2 desu)
+
+Examples:
+わたしは がくせいです。
+(I am a student.)"
+1,N5,Particle は (wa),"The particle は marks the topic of the sentence.
+
+Examples:
+わたしは アメリカじんです。
+これは ほんです。"

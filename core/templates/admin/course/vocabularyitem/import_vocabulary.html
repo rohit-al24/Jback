@@ -1,0 +1,33 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <h1>Import Vocabulary Items</h1>
+
+    <p>
+      Upload an Excel/CSV file with the following columns:
+    </p>
+    <ol>
+      <li><strong>unit_number</strong> - Unit number (whole number like 1, 2, 3). If the Unit doesn't exist, it will be created automatically.</li>
+      <li><strong>exam_code</strong> - Exam code (e.g., N5, N4) - optional</li>
+      <li><strong>target</strong> - Target word (Hiragana)</li>
+      <li><strong>correct</strong> - Correct English translation</li>
+      <li><strong>wrong1</strong> - Wrong option 1</li>
+      <li><strong>wrong2</strong> - Wrong option 2</li>
+      <li><strong>wrong3</strong> - Wrong option 3</li>
+    </ol>
+
+    <p><em>Note: The system will automatically shuffle options and calculate the correct_answer field.</em></p>
+
+    <form method="post" enctype="multipart/form-data" style="margin-top: 1rem;">
+      {% csrf_token %}
+      <div>
+        <input type="file" name="file" accept=".xlsx,.xls,.csv" required />
+      </div>
+      <div style="margin-top: 1rem;">
+        <button type="submit" class="default">Import</button>
+        <a href="../" class="button cancel-link">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

@@ -13,8 +13,14 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env file (if present) — keeps secrets out of source code
+# override=True ensures .env always wins over stale system env vars
+load_dotenv(BASE_DIR / '.env', override=True)
 
 
 # Quick-start development settings - unsuitable for production
@@ -100,6 +106,8 @@ INSTALLED_APPS = [
 
     'administration.apps.AdministrationConfig',
     'core.apps.CoreConfig',
+    'course.apps.CourseConfig',
+    'payments.apps.PaymentsConfig',
 ]
 
 MIDDLEWARE = [
@@ -200,13 +208,26 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 AUTH_USER_MODEL = 'core.User'
 
+# Keep users logged in until they explicitly logout.
+# - Persist session cookie across browser restarts
+# - Refresh expiry on every request (sliding session)
+# NOTE: Choose a long age; logout will still invalidate the session immediately.
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 365 * 5  # 5 years
+
 # Optional: used for certificate PDFs
 SENSEI_SIGNATURE_PATH = BASE_DIR / 'assets' / 'sensei-signature.png'
 
-# Billing (optional, for Stripe Checkout stub)
-STRIPE_SECRET_KEY = ""
-STRIPE_SUCCESS_URL = "http://localhost:5173/app/shop?success=1"
-STRIPE_CANCEL_URL = "http://localhost:5173/app/shop?canceled=1"
+# ── Cashfree Payment Gateway ──────────────────────────────────────────────────
+# Sign up at https://merchant.cashfree.com → Settings → API Keys
+# For testing use ENV=TEST; switch to PRODUCTION when live
+CASHFREE_APP_ID      = os.environ.get("CASHFREE_APP_ID", "")
+CASHFREE_SECRET_KEY  = os.environ.get("CASHFREE_SECRET_KEY", "")
+CASHFREE_WEBHOOK_SECRET = os.environ.get("CASHFREE_WEBHOOK_SECRET", "")
+CASHFREE_ENV         = os.environ.get("CASHFREE_ENV", "TEST")   # "TEST" or "PRODUCTION"
+# Frontend URLs Cashfree redirects to after payment
+CASHFREE_RETURN_URL  = os.environ.get("CASHFREE_RETURN_URL", "http://localhost:5173/app/shop?result=1")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

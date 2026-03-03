@@ -2,6 +2,7 @@ Django>=5.2,<6
 reportlab>=4.4
 whitenoise>=6.5
 django-cors-headers>=4.3
+python-dotenv>=1.0
 pyotp
 faster-whisper
 yt-dlp

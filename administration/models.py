@@ -73,3 +73,20 @@ class UserRole(models.Model):
 
 	def __str__(self) -> str:
 		return f"{self.user} → {self.role}"
+
+
+class Exam(models.Model):
+	"""Exam levels (N5, N4, etc.) for Japanese language proficiency."""
+	code = models.CharField(max_length=10, unique=True, help_text="Exam code (e.g., N5, N4)")
+	name = models.CharField(max_length=100, help_text="Full name of the exam")
+	description = models.TextField(blank=True)
+	is_active = models.BooleanField(default=True)
+	order = models.PositiveIntegerField(default=0)
+
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ["order", "code"]
+
+	def __str__(self) -> str:
+		return self.code

@@ -1,0 +1,4 @@
+unit_number,exam_code,target,correct,wrong1,wrong2,wrong3
+1,N5,わたし,I / Me,Teacher,Student,Friend
+1,N5,あなた,You,He,She,They
+1,N5,せんせい,Teacher,Student,Doctor,Driver

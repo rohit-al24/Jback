@@ -61,6 +61,17 @@ class User(AbstractUser):
 	# Email verification flag
 	email_verified = models.BooleanField(default=False)
 
+	class GrowthTheme(models.TextChoices):
+		BODYBUILDER = "bodybuilder", "Bodybuilder"
+		TREE = "tree", "Ancient Tree"
+		CITY = "city", "City Builder"
+
+	growth_theme = models.CharField(
+		max_length=20,
+		choices=GrowthTheme.choices,
+		default=GrowthTheme.BODYBUILDER,
+	)
+
 	def save(self, *args, **kwargs):
 		if not self.referral_code:
 			self.referral_code = str(uuid.uuid4()).replace("-", "")[:8].upper()
@@ -471,3 +482,4 @@ class MondaiQuestion(models.Model):
 
 	def __str__(self) -> str:
 		return f"MondaiQ{self.pk} ({self.mondai.public_id})"
+
