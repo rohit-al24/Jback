@@ -136,9 +136,9 @@ class Migration(migrations.Migration):
                     options={
                         'constraints': [models.UniqueConstraint(fields=('user', 'vocab_item'), name='unique_user_vocab_state')],
                         'indexes': [
-                            models.Index(fields=['user', 'mastered']),
-                            models.Index(fields=['user', 'due_at']),
-                            models.Index(fields=['user', 'is_weak']),
+                            models.Index(fields=['user', 'mastered'], name='uservocabstate_user_mastered_idx'),
+                            models.Index(fields=['user', 'due_at'], name='uservocabstate_user_due_at_idx'),
+                            models.Index(fields=['user', 'is_weak'], name='uservocabstate_user_weak_idx'),
                         ],
                     },
                 ),
