@@ -24,75 +24,95 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name='GrammarContent',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('unit', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='grammar', to='course.unit')),
-                ('exam', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='grammar_items', to='administration.exam')),
-                ('title', models.CharField(blank=True, max_length=200)),
-                ('content', models.TextField(help_text='Grammar explanation, sentence patterns, particle usage')),
-                ('order', models.PositiveIntegerField(default=0)),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.CreateModel(
+                    name='GrammarContent',
+                    fields=[
+                        ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                        ('unit', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='grammar', to='course.unit')),
+                        ('exam', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='grammar_items', to='administration.exam')),
+                        ('title', models.CharField(blank=True, max_length=200)),
+                        ('content', models.TextField(help_text='Grammar explanation, sentence patterns, particle usage')),
+                        ('order', models.PositiveIntegerField(default=0)),
+                    ],
+                    options={
+                        'db_table': 'core_grammarcontent',
+                        'ordering': ['order', 'id'],
+                        'managed': False,
+                    },
+                ),
             ],
-            options={
-                'db_table': 'core_grammarcontent',
-                'ordering': ['order', 'id'],
-                'managed': False,
-            },
         ),
-        migrations.CreateModel(
-            name='Level',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('level_number', models.PositiveIntegerField(unique=True)),
-                ('name', models.CharField(blank=True, max_length=100)),
-                ('description', models.TextField(blank=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('order', models.PositiveIntegerField(default=0)),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.CreateModel(
+                    name='Level',
+                    fields=[
+                        ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                        ('level_number', models.PositiveIntegerField(unique=True)),
+                        ('name', models.CharField(blank=True, max_length=100)),
+                        ('description', models.TextField(blank=True)),
+                        ('is_active', models.BooleanField(default=True)),
+                        ('order', models.PositiveIntegerField(default=0)),
+                    ],
+                    options={
+                        'db_table': 'core_level',
+                        'ordering': ['order', 'level_number'],
+                        'managed': False,
+                    },
+                ),
             ],
-            options={
-                'db_table': 'core_level',
-                'ordering': ['order', 'level_number'],
-                'managed': False,
-            },
         ),
-        migrations.CreateModel(
-            name='Unit',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('level', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='units', to='course.level')),
-                ('unit_number', models.PositiveIntegerField()),
-                ('name', models.CharField(blank=True, max_length=100)),
-                ('description', models.TextField(blank=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('order', models.PositiveIntegerField(default=0)),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.CreateModel(
+                    name='Unit',
+                    fields=[
+                        ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                        ('level', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='units', to='course.level')),
+                        ('unit_number', models.PositiveIntegerField()),
+                        ('name', models.CharField(blank=True, max_length=100)),
+                        ('description', models.TextField(blank=True)),
+                        ('is_active', models.BooleanField(default=True)),
+                        ('order', models.PositiveIntegerField(default=0)),
+                    ],
+                    options={
+                        'db_table': 'core_unit',
+                        'ordering': ['order', 'unit_number'],
+                        'managed': False,
+                        'constraints': [models.UniqueConstraint(fields=('level', 'unit_number'), name='unique_unit_per_level')],
+                    },
+                ),
             ],
-            options={
-                'db_table': 'core_unit',
-                'ordering': ['order', 'unit_number'],
-                'managed': False,
-                'constraints': [models.UniqueConstraint(fields=('level', 'unit_number'), name='unique_unit_per_level')],
-            },
         ),
-        migrations.CreateModel(
-            name='VocabularyItem',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('unit', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='vocabulary', to='course.unit')),
-                ('exam', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='vocabulary_items', to='administration.exam')),
-                ('target', models.CharField(help_text='Target word (Hiragana)', max_length=255)),
-                ('correct', models.CharField(help_text='Correct English translation', max_length=255)),
-                ('wrong1', models.CharField(help_text='Wrong option 1', max_length=255)),
-                ('wrong2', models.CharField(help_text='Wrong option 2', max_length=255)),
-                ('wrong3', models.CharField(help_text='Wrong option 3', max_length=255)),
-                ('correct_answer', models.CharField(blank=True, choices=[('A', 'A'), ('B', 'B'), ('C', 'C'), ('D', 'D')], help_text='Auto-calculated: which slot (A-D) contains the correct answer after shuffle', max_length=1)),
-                ('order', models.PositiveIntegerField(default=0)),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.CreateModel(
+                    name='VocabularyItem',
+                    fields=[
+                        ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                        ('unit', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='vocabulary', to='course.unit')),
+                        ('exam', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='vocabulary_items', to='administration.exam')),
+                        ('target', models.CharField(help_text='Target word (Hiragana)', max_length=255)),
+                        ('correct', models.CharField(help_text='Correct English translation', max_length=255)),
+                        ('wrong1', models.CharField(help_text='Wrong option 1', max_length=255)),
+                        ('wrong2', models.CharField(help_text='Wrong option 2', max_length=255)),
+                        ('wrong3', models.CharField(help_text='Wrong option 3', max_length=255)),
+                        ('correct_answer', models.CharField(blank=True, choices=[('A', 'A'), ('B', 'B'), ('C', 'C'), ('D', 'D')], help_text='Auto-calculated: which slot (A-D) contains the correct answer after shuffle', max_length=1)),
+                        ('order', models.PositiveIntegerField(default=0)),
+                    ],
+                    options={
+                        'db_table': 'core_vocabularyitem',
+                        'ordering': ['order', 'id'],
+                        'managed': False,
+                    },
+                ),
             ],
-            options={
-                'db_table': 'core_vocabularyitem',
-                'ordering': ['order', 'id'],
-                'managed': False,
-            },
         ),
         migrations.SeparateDatabaseAndState(
             database_operations=[],
