@@ -63,11 +63,14 @@ urlpatterns = [
     path("api/mondai/<str:public_id>/", views.mondai_detail, name="mondai_detail"),
 
     # Course System APIs
+    path("api/course/exams/", views.exams_list, name="exams_list"),
     path("api/course/levels/", views.levels_list, name="levels_list"),
     path("api/course/level/<int:level_id>/units/", views.units_list, name="units_list"),
     path("api/course/unit/<int:unit_id>/vocabulary/study/", views.vocabulary_study, name="vocabulary_study"),
     path("api/course/unit/<int:unit_id>/vocabulary/quiz/", views.vocabulary_quiz, name="vocabulary_quiz"),
     path("api/course/unit/<int:unit_id>/grammar/", views.grammar_view, name="grammar_view"),
+    path("api/course/unit/<int:unit_id>/grammar/learn/", views.grammar_learn_view, name="grammar_learn_view"),
+    path("api/course/unit/<int:unit_id>/grammar-pakka/", views.grammar_pakka_session, name="grammar_pakka_session"),
     path("api/course/unit/<int:unit_id>/adaptive-quiz/", views.adaptive_quiz_session, name="adaptive_quiz_session"),
     path("api/course/vocab-state/submit/", views.vocab_state_submit, name="vocab_state_submit"),
     path("api/course/unit/<int:unit_id>/mastery/", views.unit_mastery, name="unit_mastery"),

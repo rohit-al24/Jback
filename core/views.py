@@ -932,6 +932,46 @@ def mondai_detail(request: HttpRequest, public_id: str) -> JsonResponse:
 # Course System APIs
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Map user.target_level ('N5'/'N4') to the exam code stored in the DB ('5'/'4')
+_TARGET_LEVEL_TO_EXAM_CODE = {
+	'N5': '5',
+	'N4': '4',
+}
+
+
+def _filter_vocab_by_user_exam(vocab_qs, user):
+	"""Filter a VocabularyItem queryset to items matching the user's exam
+	(or untagged items with exam_id=None, which are shown to everyone)."""
+	from administration.models import Exam
+	target = getattr(user, 'target_level', None)
+	exam_code = _TARGET_LEVEL_TO_EXAM_CODE.get(target) if target else None
+	if exam_code:
+		try:
+			exam_obj = Exam.objects.get(code=exam_code)
+			return vocab_qs.filter(Q(exam=exam_obj) | Q(exam__isnull=True))
+		except Exam.DoesNotExist:
+			pass
+	return vocab_qs
+
+
+@api_login_required
+def exams_list(request: HttpRequest) -> JsonResponse:
+	"""Return all active exams; each includes the level_id it maps to (if any)."""
+	from administration.models import Exam
+	exams = Exam.objects.filter(is_active=True).order_by('order', 'code')
+	data = []
+	for exam in exams:
+		level = exam.levels.filter(is_active=True).order_by('order', 'level_number').first()
+		data.append({
+			'id': exam.id,
+			'code': exam.code,
+			'name': exam.name,
+			'description': exam.description,
+			'level_id': level.id if level else None,
+		})
+	return JsonResponse({'exams': data})
+
+
 @api_login_required
 def levels_list(request: HttpRequest) -> JsonResponse:
 	"""Return list of all active levels."""
@@ -953,6 +993,7 @@ def units_list(request: HttpRequest, level_id: int) -> JsonResponse:
 	"""Return list of units for a given level."""
 	level = get_object_or_404(Level, pk=level_id, is_active=True)
 	units = level.units.filter(is_active=True).order_by('order', 'unit_number')
+	from course.models import GrammarLearnItem
 	
 	data = [
 		{
@@ -961,7 +1002,10 @@ def units_list(request: HttpRequest, level_id: int) -> JsonResponse:
 			'name': unit.name or f'Unit {unit.unit_number}',
 			'description': unit.description,
 			'vocab_count': unit.vocabulary.count(),
-			'grammar_count': unit.grammar.count(),
+			'grammar_count': (lambda learn_count, legacy_count: learn_count if learn_count > 0 else legacy_count)(
+				GrammarLearnItem.objects.filter(unit=unit).count(),
+				unit.grammar.count(),
+			),
 		}
 		for unit in units
 	]
@@ -970,6 +1014,8 @@ def units_list(request: HttpRequest, level_id: int) -> JsonResponse:
 			'id': level.id,
 			'level_number': level.level_number,
 			'name': level.name or f'Level {level.level_number}',
+			'exam_code': (f"N{level.exam.code}" if level.exam and str(level.exam.code).isdigit() else (level.exam.code if level.exam else None)),
+			'exam_name': level.exam.name if level.exam else None,
 		},
 		'units': data
 	})
@@ -977,9 +1023,9 @@ def units_list(request: HttpRequest, level_id: int) -> JsonResponse:
 
 @api_login_required
 def vocabulary_study(request: HttpRequest, unit_id: int) -> JsonResponse:
-	"""Return vocabulary items for study mode (target + correct translation only)."""
+	"""Return vocabulary items for study mode filtered by the user's exam level."""
 	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
-	vocab = unit.vocabulary.all().order_by('order', 'id')
+	vocab = _filter_vocab_by_user_exam(unit.vocabulary.all(), request.user).order_by('order', 'id')
 	
 	data = [
 		{
@@ -1003,34 +1049,21 @@ def vocabulary_study(request: HttpRequest, unit_id: int) -> JsonResponse:
 
 @api_login_required
 def vocabulary_quiz(request: HttpRequest, unit_id: int) -> JsonResponse:
-	"""Return shuffled quiz questions for a unit's vocabulary."""
+	"""Return shuffled quiz questions filtered by the user's exam level."""
 	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
-	vocab = unit.vocabulary.all().order_by('order', 'id')
+	vocab = _filter_vocab_by_user_exam(unit.vocabulary.all(), request.user).order_by('order', 'id')
 	
 	questions = []
 	for item in vocab:
-		# Shuffle options based on the pre-calculated correct_answer field
-		# The correct_answer field tells us which slot (A-D) has the correct answer
-		options_map = {
-			'A': item.correct,
-			'B': item.wrong1,
-			'C': item.wrong2,
-			'D': item.wrong3,
-		}
-		
-		# Shuffle the options randomly for display
-		option_keys = ['A', 'B', 'C', 'D']
-		random.shuffle(option_keys)
-		
-		shuffled_options = {key: options_map[key] for key in option_keys}
-		
-		# Find which shuffled position has the correct answer
-		correct_answer_key = None
-		for key in option_keys:
-			if shuffled_options[key] == item.correct:
-				correct_answer_key = key
-				break
-		
+		# Shuffle the four option values, then assign them to slots A-D
+		values = [item.correct, item.wrong1, item.wrong2, item.wrong3]
+		random.shuffle(values)
+		keys = ['A', 'B', 'C', 'D']
+		shuffled_options = dict(zip(keys, values))
+
+		# The correct answer is whichever slot now holds item.correct
+		correct_answer_key = next(k for k, v in shuffled_options.items() if v == item.correct)
+
 		questions.append({
 			'id': item.id,
 			'target': item.target,
@@ -1072,6 +1105,113 @@ def grammar_view(request: HttpRequest, unit_id: int) -> JsonResponse:
 			'level': unit.level.name or f'Level {unit.level.level_number}',
 		},
 		'grammar': data
+	})
+
+
+@api_login_required
+def grammar_learn_view(request: HttpRequest, unit_id: int) -> JsonResponse:
+	"""Return structured Grammar Learn sections for a unit.
+
+	GET params:
+	  ?exam_code=N5_G01 (prefix match supported, e.g. exam_code=N5)
+	"""
+	from course.models import GrammarLearnItem
+
+	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
+	exam_code = (request.GET.get('exam_code') or '').strip().upper()
+
+	qs = GrammarLearnItem.objects.filter(unit=unit)
+	if exam_code:
+		qs = qs.filter(exam_code__startswith=exam_code)
+
+	items = list(qs.order_by('topic_order', 'id'))
+
+	# Group rows that share the same topic_order into a single "card".
+	# The first row in each group carries the card-level fields; subsequent
+	# rows contribute extra examples.
+	from collections import OrderedDict
+	cards: OrderedDict = OrderedDict()
+	for it in items:
+		key = it.topic_order
+		if key not in cards:
+			cards[key] = {
+				'id': it.id,
+				'exam_level': it.exam_level,
+				'exam_code': it.exam_code,
+				'topic_order': it.topic_order,
+				'title': it.title,
+				'main_character': it.main_character,
+				'logic_formula': it.logic_formula,
+				'explanation': it.explanation,
+				'examples': [],
+				'visual_type': it.visual_type,
+				'pakka_tip': it.pakka_tip,
+			}
+		if it.example_jp:
+			cards[key]['examples'].append({'jp': it.example_jp, 'en': it.example_en})
+
+	data = list(cards.values())
+
+	return JsonResponse({
+		'unit': {
+			'id': unit.id,
+			'unit_number': unit.unit_number,
+			'name': unit.name or f'Unit {unit.unit_number}',
+			'level': unit.level.name or f'Level {unit.level.level_number}',
+		},
+		'exam_code': exam_code,
+		'items': data,
+	})
+
+
+@api_login_required
+def grammar_pakka_session(request: HttpRequest, unit_id: int) -> JsonResponse:
+	"""Return Grammar Pakka items (Blueprint/Builder/Heavy Loop/Beast Mode) for a unit.
+
+	GET params:
+	  ?exam_code=N5_G01 (optional; prefix match supported, e.g. exam_code=N5)
+	"""
+	from course.models import GrammarPakkaItem
+
+	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
+	exam_code = (request.GET.get('exam_code') or '').strip().upper()
+
+	qs = GrammarPakkaItem.objects.filter(unit=unit)
+	if exam_code:
+		qs = qs.filter(exam_code__startswith=exam_code)
+	items = list(qs.order_by('order', 'id'))
+
+	def _split_blocks(value: str) -> list[str]:
+		parts = [p.strip() for p in (value or '').split(',')]
+		return [p for p in parts if p]
+
+	data = [
+		{
+			'id': it.id,
+			'step_type': it.step_type,
+			'exam_level': it.exam_level,
+			'exam_code': it.exam_code,
+			'logic_formula': it.logic_formula,
+			'english_prompt': it.english_prompt,
+			'correct_sentence': it.correct_sentence,
+			'word_blocks': _split_blocks(it.word_blocks),
+			'particle_target': it.particle_target,
+			'distractors': _split_blocks(getattr(it, 'distractors', '')),
+			'explanation_hint': it.explanation_hint,
+			'order': it.order,
+		}
+		for it in items
+	]
+
+	return JsonResponse({
+		'unit': {
+			'id': unit.id,
+			'unit_number': unit.unit_number,
+			'name': unit.name or f'Unit {unit.unit_number}',
+			'level': unit.level.name or f'Level {unit.level.level_number}',
+		},
+		'exam_code': exam_code,
+		'items': data,
 	})
 
 
@@ -1192,6 +1332,7 @@ def _get_surprise_review_items(user, exclude_unit_id: int) -> list[dict]:
 			'timer_seconds': timer_map.get(st.mode, 10),
 			'streak_correct': st.streak_correct,
 			'lapses': st.lapses,
+			'is_weak': bool(st.is_weak),
 			'mastered': False,
 			'is_surprise': True,
 			'unit_name': v.unit.name or f'Unit {v.unit.unit_number}',
@@ -1216,12 +1357,13 @@ def adaptive_quiz_session(request: HttpRequest, unit_id: int) -> JsonResponse:
 
 	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
 
-	vocab_qs = VocabularyItem.objects.filter(unit=unit)
+	vocab_qs = _filter_vocab_by_user_exam(VocabularyItem.objects.filter(unit=unit), user)
+	# Allow an explicit ?exam= override to narrow further (e.g. admin testing)
 	if exam_code:
 		from administration.models import Exam
 		try:
 			exam_obj = Exam.objects.get(code=exam_code)
-			vocab_qs = vocab_qs.filter(exam=exam_obj)
+			vocab_qs = vocab_qs.filter(Q(exam=exam_obj) | Q(exam__isnull=True))
 		except Exam.DoesNotExist:
 			pass
 	vocab_list = list(vocab_qs.order_by('order', 'id'))
@@ -1279,6 +1421,7 @@ def adaptive_quiz_session(request: HttpRequest, unit_id: int) -> JsonResponse:
 			'timer_seconds': timer_map.get(mode, 10),
 			'streak_correct': streak,
 			'lapses':        lapses,
+			'is_weak':       bool(st.is_weak) if st else False,
 			'mastered':      mastered,
 			'priority':      priority,
 		})

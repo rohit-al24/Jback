@@ -12,7 +12,15 @@ from django.utils import timezone
 import pyotp
 
 from .decorators import api_login_required
-from .models import User
+from .models import PersistentToken, User
+
+
+def _issue_token(user) -> str:
+    """Create a persistent auth token for the user, replacing any existing one."""
+    PersistentToken.objects.filter(user=user).delete()
+    token = PersistentToken(user=user)
+    token.save()
+    return token.key
 
 def _user_payload(user) -> dict:
     return {
@@ -134,7 +142,7 @@ def register_view(request: HttpRequest) -> JsonResponse:
 
     # Log the user in directly after account creation (TOTP setup removed)
     login(request, user)
-    return JsonResponse({"authenticated": True, "user": _user_payload(user)})
+    return JsonResponse({"authenticated": True, "user": _user_payload(user), "token": _issue_token(user)})
 
 
 def login_view(request: HttpRequest) -> JsonResponse:
@@ -177,7 +185,7 @@ def login_view(request: HttpRequest) -> JsonResponse:
             return JsonResponse({"detail": "Invalid OTP", "otp_required": True, "code": "otp_required"}, status=400)
 
     login(request, user)
-    return JsonResponse({"authenticated": True, "user": _user_payload(user)})
+    return JsonResponse({"authenticated": True, "user": _user_payload(user), "token": _issue_token(user)})
 
 
 def totp_confirm(request: HttpRequest) -> JsonResponse:
@@ -221,13 +229,16 @@ def totp_confirm(request: HttpRequest) -> JsonResponse:
     user.save(update_fields=["totp_enabled"])
 
     login(request, user)
-    return JsonResponse({"authenticated": True, "user": _user_payload(user)})
+    return JsonResponse({"authenticated": True, "user": _user_payload(user), "token": _issue_token(user)})
 
 
 def logout_view(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         return JsonResponse({"detail": "POST required"}, status=405)
 
+    # Revoke persistent token if present
+    if request.user.is_authenticated:
+        PersistentToken.objects.filter(user=request.user).delete()
     logout(request)
     return JsonResponse({"authenticated": False})
 

@@ -17,7 +17,14 @@ from .models import (
 	VideoCompletion,
 	WeeklyContent,
 )
-from course.models import Level, Unit, VocabularyItem, GrammarContent
+from course.models import (
+	Level,
+	Unit,
+	VocabularyItem,
+	GrammarContent,
+	GrammarLearnItem,
+	GrammarPakkaItem,
+)
 
 
 def _safe_int(value) -> int | None:
@@ -575,3 +582,426 @@ class GrammarContentAdmin(admin.ModelAdmin):
 			title="Import Grammar",
 		)
 		return render(request, "admin/course/grammarcontent/import_grammar.html", context)
+
+
+@admin.register(GrammarLearnItem)
+class GrammarLearnItemAdmin(admin.ModelAdmin):
+	change_list_template = "admin/course/grammarlearnitem/change_list.html"
+	list_display = ("unit", "exam_code", "title", "topic_order", "visual_type")
+	list_filter = ("unit__level", "unit", "exam_level", "exam_code", "visual_type")
+	search_fields = ("title", "explanation", "exam_code")
+	list_editable = ("topic_order",)
+	fieldsets = (
+		(
+			"Core",
+			{
+				"fields": (
+					"unit",
+					"exam_level",
+					"exam_code",
+					"topic_order",
+				)
+			},
+		),
+		(
+			"Content",
+			{
+				"fields": (
+					"title",
+					"main_character",
+					"logic_formula",
+					"explanation",
+					"example_jp", "example_en",
+					"visual_type",
+					"pakka_tip",
+				)
+			},
+		),
+	)
+
+	def get_urls(self):
+		urls = super().get_urls()
+		custom = [
+			path(
+				"import/",
+				self.admin_site.admin_view(self.import_grammar_learn_view),
+				name="course_grammarlearnitem_import",
+			),
+		]
+		return custom + urls
+
+	def import_grammar_learn_view(self, request):
+		from administration.models import Exam
+		import io
+
+		# Step 1 – no POST yet: show upload form
+		# Step 2 – file uploaded, no level chosen: parse file, show level chooser
+		# Step 3 – file + level chosen: do the import
+
+		# ── STAGE 3: actual import ──────────────────────────────────────────────
+		if request.method == "POST" and request.POST.get("stage") == "import":
+			level_id = _safe_int(request.POST.get("level_id"))
+			raw_data = request.POST.get("raw_data", "")
+
+			if not level_id or not raw_data:
+				messages.error(request, "Missing level or data. Please start over.")
+				return redirect(".")
+
+			level = Level.objects.filter(pk=level_id).first()
+			if not level:
+				messages.error(request, "Selected level not found.")
+				return redirect(".")
+
+			try:
+				import pandas as pd
+				df = pd.read_csv(io.StringIO(raw_data))
+			except Exception as e:
+				messages.error(request, f"Failed to re-parse data: {e}")
+				return redirect(".")
+
+			# Derive exam from the level's linked Exam
+			exam_obj = level.exam  # may be None
+			exam_code_base = (exam_obj.code if exam_obj else "").strip().upper()
+			# Numeric-only codes (e.g. "5") → prefix with N
+			if exam_code_base.isdigit():
+				exam_code_base = f"N{exam_code_base}"
+			# Extract numeric part for exam_level field (N5 → 5)
+			exam_level_int = 5
+			if exam_code_base.upper().startswith("N"):
+				try:
+					exam_level_int = int(exam_code_base[1:])
+				except ValueError:
+					pass
+
+			created = updated = skipped = 0
+			errors = []
+
+			REQUIRED = ["unit", "topic_order", "title", "logic_formula", "explanation"]
+
+			for idx, row in df.iterrows():
+				row_num = int(idx) + 2
+				try:
+					unit_num = _safe_int(row.get("unit") if hasattr(row, "get") else row["unit"])
+					topic_order = _safe_int(row.get("topic_order") if hasattr(row, "get") else row["topic_order"])
+					title = str(row.get("title", "") or "").strip()
+					logic_formula = str(row.get("logic_formula", "") or "").strip()
+					explanation = str(row.get("explanation", "") or "").strip()
+					example_jp = str(row.get("example_jp", "") or "").strip()
+					example_en = str(row.get("example_en", "") or "").strip()
+					visual_type = str(row.get("visual_type", "") or "").strip()
+					pakka_tip = str(row.get("pakka_tip", "") or "").strip()
+
+					if not all([unit_num, topic_order, title, logic_formula, explanation]):
+						skipped += 1
+						errors.append(f"Row {row_num}: missing required field – skipped")
+						continue
+
+					# Resolve unit within the chosen level
+					unit_obj, _ = Unit.objects.get_or_create(
+						level=level,
+						unit_number=unit_num,
+						defaults={
+							"name": f"Unit {unit_num}",
+							"description": "",
+							"is_active": True,
+							"order": unit_num,
+						},
+					)
+
+					exam_code = f"{exam_code_base}_G{unit_num:02d}"
+
+					# unique key: one row per (unit, topic_order, example_jp)
+					obj, was_created = GrammarLearnItem.objects.update_or_create(
+						unit=unit_obj,
+						topic_order=topic_order,
+						example_jp=example_jp,
+						defaults={
+							"exam_level": exam_level_int,
+							"exam_code": exam_code,
+							"title": title,
+							"logic_formula": logic_formula,
+							"explanation": explanation,
+							"example_en": example_en,
+							"visual_type": visual_type,
+							"pakka_tip": pakka_tip,
+						},
+					)
+					if was_created:
+						created += 1
+					else:
+						updated += 1
+				except Exception as exc:
+					skipped += 1
+					errors.append(f"Row {row_num}: {exc}")
+					continue
+
+			summary = f"Import complete — {created} created, {updated} updated, {skipped} skipped."
+			messages.success(request, summary)
+			if errors:
+				for e in errors[:10]:
+					messages.warning(request, e)
+			return redirect("..")
+
+		# ── STAGE 2: file uploaded, choose level ──────────────────────────────
+		if request.method == "POST" and request.POST.get("stage") == "choose_level":
+			try:
+				import pandas as pd
+			except Exception:
+				messages.error(request, "Missing dependency: pandas")
+				return redirect(".")
+
+			f = request.FILES.get("file")
+			if not f:
+				messages.error(request, "Please choose a file.")
+				return redirect(".")
+
+			name = (getattr(f, "name", "") or "").lower()
+			try:
+				if name.endswith(".csv"):
+					df = pd.read_csv(f)
+				else:
+					df = pd.read_excel(f)
+			except Exception as e:
+				messages.error(request, f"Could not read file: {e}")
+				return redirect(".")
+
+			# Normalise column names
+			df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+
+			REQUIRED_COLS = {"unit", "topic_order", "title", "logic_formula",
+							 "explanation", "example_jp", "example_en"}
+			missing = REQUIRED_COLS - set(df.columns)
+			if missing:
+				messages.error(request, f"Missing columns: {', '.join(sorted(missing))}")
+				return redirect(".")
+
+			# Serialise to CSV string to pass through the form
+			raw_data = df.to_csv(index=False)
+			preview_rows = df.head(5).to_dict("records")
+			levels = Level.objects.select_related("exam").filter(is_active=True).order_by("level_number")
+			total_rows = len(df)
+
+			context = dict(
+				self.admin_site.each_context(request),
+				title="Import Grammar Learn Items — Select Level",
+				raw_data=raw_data,
+				preview_rows=preview_rows,
+				levels=levels,
+				total_rows=total_rows,
+				stage="import",
+			)
+			return render(request, "admin/course/grammarlearnitem/import_grammar_learn.html", context)
+
+		# ── STAGE 1: initial GET – show upload form ────────────────────────────
+		context = dict(
+			self.admin_site.each_context(request),
+			title="Import Grammar Learn Items",
+			stage="choose_level",
+		)
+		return render(request, "admin/course/grammarlearnitem/import_grammar_learn.html", context)
+
+
+@admin.register(GrammarPakkaItem)
+class GrammarPakkaItemAdmin(admin.ModelAdmin):
+	change_list_template = "admin/course/grammarpakkaitem/change_list.html"
+	list_display = ("unit", "exam_code", "step_type", "english_prompt", "order")
+	list_filter = ("unit__level", "unit", "exam_level", "exam_code", "step_type")
+	search_fields = ("english_prompt", "correct_sentence", "exam_code")
+	list_editable = ("order",)
+	fieldsets = (
+		(
+			"Core",
+			{
+				"fields": (
+					"unit",
+					"exam",
+					"exam_level",
+					"exam_code",
+					"step_type",
+					"order",
+				)
+			},
+		),
+		(
+			"Question",
+			{
+				"fields": (
+					"logic_formula",
+					"english_prompt",
+					"correct_sentence",
+				)
+			},
+		),
+		(
+			"Answer Options",
+			{
+				"fields": (
+					"word_blocks",
+					"particle_target",
+					"distractors",
+					"explanation_hint",
+				)
+			},
+		),
+	)
+
+	def get_urls(self):
+		urls = super().get_urls()
+		custom = [
+			path(
+				"import/",
+				self.admin_site.admin_view(self.import_grammar_pakka_view),
+				name="course_grammarpakkaitem_import",
+			),
+		]
+		return custom + urls
+
+	def import_grammar_pakka_view(self, request):
+		import io
+
+		def _null(val) -> str:
+			"""Return blank for 'なし' or NaN-like values."""
+			s = str(val or "").strip()
+			return "" if s.lower() in ("なし", "nan", "none", "") else s
+
+		# ── STAGE 3: actual import ──────────────────────────────────────────
+		if request.method == "POST" and request.POST.get("stage") == "import":
+			level_id = _safe_int(request.POST.get("level_id"))
+			raw_data = request.POST.get("raw_data", "")
+
+			if not level_id or not raw_data:
+				messages.error(request, "Missing level or data. Please start over.")
+				return redirect(".")
+
+			level = Level.objects.filter(pk=level_id).first()
+			if not level:
+				messages.error(request, "Selected level not found.")
+				return redirect(".")
+
+			try:
+				import pandas as pd
+				df = pd.read_csv(io.StringIO(raw_data))
+			except Exception as e:
+				messages.error(request, f"Failed to re-parse data: {e}")
+				return redirect(".")
+
+			created = updated = skipped = 0
+			errors = []
+
+			for idx, row in df.iterrows():
+				row_num = int(idx) + 2
+				try:
+					unit_num   = _safe_int(row.get("unit"))
+					step_type  = _safe_int(row.get("step_type"))
+					english    = _null(row.get("english_prompt", ""))
+					correct    = _null(row.get("correct_sentence", ""))
+					word_blks  = _null(row.get("word_blocks", ""))
+					ptarget    = _null(row.get("particle_target", ""))
+					distract   = _null(row.get("distractors", ""))
+					hint       = _null(row.get("explanation_hint", ""))
+					formula    = _null(row.get("logic_formula", ""))
+					exam_level = _safe_int(row.get("exam_level")) or 5
+					exam_code  = _null(row.get("exam_code", ""))
+					order_val  = _safe_int(row.get("order")) or int(idx) + 1
+
+					if not all([unit_num, step_type, english, correct]):
+						skipped += 1
+						errors.append(f"Row {row_num}: missing required field – skipped")
+						continue
+
+					unit_obj, _ = Unit.objects.get_or_create(
+						level=level,
+						unit_number=unit_num,
+						defaults={
+							"name": f"Unit {unit_num}",
+							"description": "",
+							"is_active": True,
+							"order": unit_num,
+						},
+					)
+
+					obj, was_created = GrammarPakkaItem.objects.update_or_create(
+						unit=unit_obj,
+						step_type=step_type,
+						english_prompt=english,
+						defaults={
+							"exam_level": exam_level,
+							"exam_code": exam_code,
+							"logic_formula": formula,
+							"correct_sentence": correct,
+							"word_blocks": word_blks,
+							"particle_target": ptarget,
+							"distractors": distract,
+							"explanation_hint": hint,
+							"order": order_val,
+						},
+					)
+					if was_created:
+						created += 1
+					else:
+						updated += 1
+				except Exception as exc:
+					skipped += 1
+					errors.append(f"Row {row_num}: {exc}")
+					continue
+
+			summary = f"Import complete — {created} created, {updated} updated, {skipped} skipped."
+			messages.success(request, summary)
+			for e in errors[:10]:
+				messages.warning(request, e)
+			return redirect("..")
+
+		# ── STAGE 2: file uploaded, choose level ──────────────────────────
+		if request.method == "POST" and request.POST.get("stage") == "choose_level":
+			try:
+				import pandas as pd
+			except ImportError:
+				messages.error(request, "Missing dependency: pandas")
+				return redirect(".")
+
+			f = request.FILES.get("file")
+			if not f:
+				messages.error(request, "Please choose a file.")
+				return redirect(".")
+
+			name = (getattr(f, "name", "") or "").lower()
+			try:
+				if name.endswith(".csv"):
+					df = pd.read_csv(f)
+				else:
+					df = pd.read_excel(f)
+			except Exception as e:
+				messages.error(request, f"Could not read file: {e}")
+				return redirect(".")
+
+			df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+
+			REQUIRED_COLS = {"unit", "step_type", "english_prompt", "correct_sentence"}
+			missing = REQUIRED_COLS - set(df.columns)
+			if missing:
+				messages.error(request, f"Missing columns: {', '.join(sorted(missing))}")
+				return redirect(".")
+
+			raw_data = df.to_csv(index=False)
+			preview_rows = df.head(5).to_dict("records")
+			levels = Level.objects.select_related("exam").filter(is_active=True).order_by("level_number")
+			total_rows = len(df)
+
+			context = dict(
+				self.admin_site.each_context(request),
+				title="Import Grammar Quiz Items — Select Level",
+				raw_data=raw_data,
+				preview_rows=preview_rows,
+				levels=levels,
+				total_rows=total_rows,
+				stage="import",
+			)
+			return render(request, "admin/course/grammarpakkaitem/import_grammar_pakka.html", context)
+
+		# ── STAGE 1: GET – show upload form ──────────────────────────────
+		context = dict(
+			self.admin_site.each_context(request),
+			title="Import Grammar Quiz Items",
+			stage="choose_level",
+		)
+		return render(request, "admin/course/grammarpakkaitem/import_grammar_pakka.html", context)

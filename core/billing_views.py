@@ -89,6 +89,13 @@ def cashfree_create_order(request: HttpRequest) -> JsonResponse:
 
     order_id = f"bengo_{user.pk}_{uuid.uuid4().hex[:10]}"
 
+    # Frontend can send its own return_url (platform-specific: native vs web).
+    # Fall back to the configured CASHFREE_RETURN_URL or a safe default.
+    custom_return_url = (body.get("return_url") or "").strip()
+    base_return_url = custom_return_url or getattr(
+        settings, "CASHFREE_RETURN_URL", "http://localhost:5173/app/shop?result=1"
+    )
+
     payload = {
         "order_id":       order_id,
         "order_amount":   PLAN_50["price_rs"],
@@ -100,11 +107,7 @@ def cashfree_create_order(request: HttpRequest) -> JsonResponse:
             "customer_phone": "9999999999",   # Cashfree requires this field
         },
         "order_meta": {
-            "return_url": (
-                getattr(settings, "CASHFREE_RETURN_URL",
-                        "http://localhost:5173/app/shop?result=1")
-                + f"&order_id={order_id}&user_id={user.pk}"
-            ),
+            "return_url": base_return_url + f"&order_id={order_id}&user_id={user.pk}",
             "notify_url": "",  # webhook is set via Cashfree dashboard
         },
         "order_tags": {

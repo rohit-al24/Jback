@@ -1,0 +1,163 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+<style>
+  .import-box { max-width: 780px; }
+  .import-box h1 { margin-bottom: 1rem; }
+  .import-box .help { color: #888; font-size: 0.85em; margin-bottom: 1.5rem; }
+  .col-list { background: #1e1e1e; border: 1px solid #333; border-radius: 4px; padding: 0.75rem 1rem; }
+  .col-list li { font-family: monospace; font-size: 0.9em; margin: 0.2rem 0; }
+  .col-list li span { color: #e8a838; font-weight: bold; }
+  .col-list li em { color: #888; }
+  .col-list li.opt span { color: #7ec87e; }
+  .preview-table { width: 100%; border-collapse: collapse; font-size: 0.78em; margin-top: 1rem; overflow-x: auto; display: block; }
+  .preview-table th { background: #2a2a2a; padding: 6px 10px; text-align: left; font-weight: bold; border-bottom: 1px solid #444; white-space: nowrap; }
+  .preview-table td { padding: 5px 10px; border-bottom: 1px solid #2a2a2a; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+  .level-cards { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; }
+  .level-card input[type=radio] { display: none; }
+  .level-card label {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-width: 130px; padding: 0.75rem 1rem; border: 2px solid #444;
+    border-radius: 8px; cursor: pointer; background: #1e1e1e; transition: border-color 0.15s;
+  }
+  .level-card label:hover { border-color: #e8a838; }
+  .level-card input[type=radio]:checked + label { border-color: #e8a838; background: #2a2200; }
+  .level-card .lc-code { font-size: 1.4em; font-weight: bold; color: #e8a838; }
+  .level-card .lc-name { font-size: 0.8em; color: #aaa; margin-top: 2px; }
+  .level-card .lc-exam { font-size: 0.75em; color: #666; margin-top: 1px; }
+  .preview-banner { background: #162416; border: 1px solid #2e4a2e; border-radius: 6px; padding: 0.6rem 1rem; margin-bottom: 1rem; font-size: 0.85em; color: #7ec87e; }
+  .submit-row-custom { margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
+  .btn-cancel { color: #aaa; text-decoration: underline; font-size: 0.9em; }
+  .step-badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 0.75em; font-weight: bold; margin: 2px; }
+  .step-2 { background: #1a2e3a; color: #7ec8e8; border: 1px solid #2a4a5a; }
+  .step-3 { background: #2a2200; color: #e8c838; border: 1px solid #4a3a00; }
+  .step-4 { background: #2a0a0a; color: #e87878; border: 1px solid #4a1a1a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="import-box" id="content-main">
+
+  {% if stage == "choose_level" %}
+  {# ── STAGE 1: Upload file ─────────────────────────────────────────────── #}
+  <h1>Import Grammar Quiz Items</h1>
+  <p class="help">
+    Upload an Excel (<code>.xlsx</code>) or CSV file. The first row must be a
+    header row. Required columns are marked in <span style="color:#e8a838">orange</span>;
+    optional columns in <span style="color:#7ec87e">green</span>.
+    Use <code>なし</code> (or leave blank) for empty optional fields.
+  </p>
+
+  <ul class="col-list">
+    <li><span>unit</span> — unit number as a whole number (3, 4 …)</li>
+    <li><span>step_type</span> — 2 = Builder, 3 = Heavy Loop, 4 = Beast Mode</li>
+    <li><span>english_prompt</span> — English sentence or instruction shown to the user</li>
+    <li><span>correct_sentence</span> — the full correct Japanese sentence</li>
+    <li class="opt"><span>exam_level</span> <em>(optional)</em> — e.g. 5 for N5</li>
+    <li class="opt"><span>exam_code</span> <em>(optional)</em> — e.g. N5_U03_T1_Q1</li>
+    <li class="opt"><span>logic_formula</span> <em>(optional)</em> — e.g. N1 は N2 です</li>
+    <li class="opt"><span>word_blocks</span> <em>(optional)</em> — comma-separated blocks, e.g. <code>ここ,は,しょくどう,です</code></li>
+    <li class="opt"><span>particle_target</span> <em>(optional)</em> — the correct particle for Heavy Loop (use <code>なし</code> if N/A)</li>
+    <li class="opt"><span>distractors</span> <em>(optional)</em> — comma-separated wrong options, e.g. <code>が,を,に</code></li>
+    <li class="opt"><span>explanation_hint</span> <em>(optional)</em> — hint shown after wrong answer</li>
+    <li class="opt"><span>order</span> <em>(optional)</em> — display order (auto-assigned if blank)</li>
+  </ul>
+
+  <div style="margin-top:1rem; background:#1e1e1e; border:1px solid #333; border-radius:4px; padding:0.75rem 1rem; font-size:0.82em; color:#aaa;">
+    <strong style="color:#e8a838">Step types:</strong>
+    <span class="step-badge step-2">2 · Builder</span> assemble word blocks in order.
+    <span class="step-badge step-3">3 · Heavy Loop</span> fill the blank with the correct particle.
+    <span class="step-badge step-4">4 · Beast Mode</span> reconstruct the sentence from scratch with no hints.
+  </div>
+
+  <form method="post" enctype="multipart/form-data" style="margin-top: 1.5rem;">
+    {% csrf_token %}
+    <input type="hidden" name="stage" value="choose_level" />
+    <div>
+      <label for="id_file" style="font-weight:bold;">Choose file:</label><br>
+      <input id="id_file" type="file" name="file" accept=".xlsx,.xls,.csv" required style="margin-top:0.4rem;" />
+    </div>
+    <div class="submit-row-custom">
+      <button type="submit" class="default">Next — Select Level →</button>
+      <a href="../" class="btn-cancel">Cancel</a>
+    </div>
+  </form>
+
+  {% elif stage == "import" %}
+  {# ── STAGE 2: Choose level + preview ─────────────────────────────────── #}
+  <h1>Import Grammar Quiz Items — Select Level</h1>
+
+  <div class="preview-banner">
+    ✓ File parsed — <strong>{{ total_rows }}</strong> row{{ total_rows|pluralize }} ready to import.
+    Preview (first 5 rows shown below).
+  </div>
+
+  {% if preview_rows %}
+  <div style="overflow-x:auto;">
+    <table class="preview-table">
+      <thead>
+        <tr>
+          {% for key in preview_rows.0.keys %}
+          <th>{{ key }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_rows %}
+        <tr>
+          {% for val in row.values %}
+          <td title="{{ val }}">{{ val }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <form method="post" style="margin-top: 1.5rem;">
+    {% csrf_token %}
+    <input type="hidden" name="stage" value="import" />
+    <input type="hidden" name="raw_data" value="{{ raw_data }}" />
+
+    <p style="font-weight:bold; margin-bottom:0.6rem;">
+      Select the Level these items belong to:
+      <em style="font-weight:normal; color:#888;">(used to resolve the unit number → Unit object)</em>
+    </p>
+
+    <div class="level-cards">
+      {% for level in levels %}
+      <div class="level-card">
+        <input type="radio" id="level_{{ level.pk }}" name="level_id" value="{{ level.pk }}"
+               {% if forloop.first %}checked{% endif %} required />
+        <label for="level_{{ level.pk }}">
+          <span class="lc-code">
+            {% if level.exam %}{{ level.exam.code }}{% else %}L{{ level.level_number }}{% endif %}
+          </span>
+          <span class="lc-name">{{ level.name }}</span>
+          {% if level.exam %}
+          <span class="lc-exam">Exam: {{ level.exam.name }}</span>
+          {% endif %}
+        </label>
+      </div>
+      {% empty %}
+      <p style="color:#c00;">No active levels found. Please create a Level first.</p>
+      {% endfor %}
+    </div>
+
+    <p class="help" style="margin-top:0.5rem;">
+      The <code>unit</code> column value (e.g. <code>3</code>) will be matched against
+      <code>unit_number</code> within the chosen Level. Units that don't exist yet will be
+      created automatically.
+    </p>
+
+    <div class="submit-row-custom">
+      <button type="submit" class="default">Import {{ total_rows }} Row{{ total_rows|pluralize }}</button>
+      <a href="../" class="btn-cancel">Cancel</a>
+    </div>
+  </form>
+
+  {% endif %}
+</div>
+{% endblock %}

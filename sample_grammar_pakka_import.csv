@@ -1,0 +1,5 @@
+﻿exam_level,exam_code,unit_id,step_type,logic_formula,english_prompt,correct_sentence,word_blocks,particle_target,distractors,explanation_hint
+5,N5_G02,2,1,[N1] の [N2],Mr. Miller's book,ミラーさんのほんです,,,,"Think: N1 owns N2. の links them like 's in English."
+5,N5_G02,2,2,Build: [Owner] の [Thing],Mr. Miller's book,ミラーさんのほんです,"ミラーさん,の,ほん,です",,,Build the sentence by dragging blocks. Verb/copula goes last!
+5,N5_G02,2,3,Fill the link: ___ の ___,Mr. Miller's book,ミラーさんのほんです,,の,"は,を,も",Use の to show that the book belongs to Miller.
+5,N5_G02,2,4,Type the full sentence,Mr. Miller's book,ミラーさんのほんです,,,,No hints. Build from memory!

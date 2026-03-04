@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
@@ -76,6 +78,25 @@ class User(AbstractUser):
 		if not self.referral_code:
 			self.referral_code = str(uuid.uuid4()).replace("-", "")[:8].upper()
 		super().save(*args, **kwargs)
+
+
+class PersistentToken(models.Model):
+	"""Long-lived auth token so users stay logged in across app restarts."""
+	key = models.CharField(max_length=64, unique=True, db_index=True)
+	user = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.CASCADE,
+		related_name="persistent_tokens",
+	)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	def save(self, *args, **kwargs):
+		if not self.key:
+			self.key = secrets.token_hex(32)
+		super().save(*args, **kwargs)
+
+	def __str__(self) -> str:
+		return f"Token(user={self.user_id})"
 
 
 class SubscriptionPlan(models.Model):

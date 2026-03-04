@@ -1,0 +1,7 @@
+﻿unit_id,step_type,exam_level,exam_code,logic_formula,english_prompt,correct_sentence,word_blocks,particle_target,distractors,explanation_hint
+1,2,5,N5_G01_Q1,"[N1] は [N2] です","I am a student.","わたしはがくせいです","わたし,は,がくせい,です",,,Desu ends positive statements.
+1,2,5,N5_G01_Q2,"[N1] は [N2] じゃありません","I am not a doctor.","わたしはいしゃじゃありません","わたし,は,いしゃ,じゃありません",,,Negative: replace desu with ja arimasen.
+1,3,5,N5_G01_Q3,"... ですか","Are you an engineer?","あなたはエンジニアですか","あなた,は,エンジニア,です,か",か,"は,を,に",か always ends a question.
+1,3,5,N5_G01_Q4,"[N1] も [N2] です","(Name) is also a researcher.","サントスさんもけんきゅうしゃです","サントスさん,も,けんきゅうしゃ,です",も,"は,が,を",も replaces は — never use both together.
+1,3,5,N5_G01_Q5,"... ですか","Is that person a teacher?","あのひとはせんせいですか","あのひと,は,せんせい,です,か",は,"が,を,に",は marks the topic person.
+1,4,5,N5_G01_Q6,"[N1] は [N2] じゃありません","I am not a bank employee.","わたしはぎんこういんじゃありません","わたし,は,ぎんこういん,じゃありません",,,No hints — recall the full negative pattern.
