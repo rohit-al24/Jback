@@ -132,9 +132,9 @@ class UserVocabState(models.Model):
             models.UniqueConstraint(fields=["user", "vocab_item"], name="unique_user_vocab_state"),
         ]
         indexes = [
-            models.Index(fields=["user", "mastered"]),
-            models.Index(fields=["user", "due_at"]),
-            models.Index(fields=["user", "is_weak"]),
+            models.Index(fields=["user", "mastered"], name="course_user_user_id_9a6e8b_idx"),
+            models.Index(fields=["user", "due_at"], name="course_user_user_id_b845f9_idx"),
+            models.Index(fields=["user", "is_weak"], name="course_user_user_id_5a05e3_idx"),
         ]
 
     def __str__(self) -> str:
