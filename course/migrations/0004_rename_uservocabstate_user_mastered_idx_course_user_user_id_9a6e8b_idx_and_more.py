@@ -18,6 +18,15 @@ class Migration(migrations.Migration):
 # actually present.
 
 def _safe_rename_indexes(apps, schema_editor):
+    """Create the new index names and drop any old variants by hand.
+
+    SQLite's built‑in ``schema_editor.rename_index`` is fragile: it still
+    tries to DROP the unprefixed name after doing the rename, which is
+    exactly the error you observed.  Rather than battle those internal
+    details we simply execute explicit ``CREATE INDEX``/``DROP INDEX`` SQL
+    when the source index exists.
+    """
+
     UserVocabState = apps.get_model('course', 'UserVocabState')
     tbl = UserVocabState._meta.db_table
 
@@ -25,7 +34,6 @@ def _safe_rename_indexes(apps, schema_editor):
     cursor.execute(f"PRAGMA index_list('{tbl}')")
     existing = {row[1] for row in cursor.fetchall()}
 
-    # list of (possible-old-name, new-name)
     pairs = [
         ('uservocabstate_user_mastered_idx', 'course_user_user_id_9a6e8b_idx'),
         ('uservocabstate_user_due_at_idx', 'course_user_user_id_b845f9_idx'),
@@ -33,26 +41,33 @@ def _safe_rename_indexes(apps, schema_editor):
     ]
 
     for old, new in pairs:
-        # some indexes were created with the table name prefixed, others were
-        # not.  The `old` variable usually starts with "uservocabstate_"; if
-        # we simply prepend the table name again we would end up with
-        # "course_uservocabstate_uservocabstate_…".  Generate the two
-        # reasonable candidates and test both.
+        # determine all possible names the legacy index might have had
         candidates = [old]
         if not old.startswith(tbl + "_"):
             suffix = old
             if suffix.startswith("uservocabstate_"):
                 suffix = suffix[len("uservocabstate_") :]
             candidates.append(f"{tbl}_{suffix}")
+
+        found = None
         for cname in candidates:
             if cname in existing:
-                try:
-                    schema_editor.rename_index(UserVocabState, cname, new)
-                except Exception:
-                    # ignore any error (index might be absent on another
-                    # backend) and move on
-                    pass
+                found = cname
                 break
+        if not found:
+            continue
+
+        # create the new index if necessary, then drop the old one
+        # we know exactly which columns go with each new index name, so build
+        # the appropriate SQL directly.
+        if 'mastered' in new:
+            sql_create = f"CREATE INDEX IF NOT EXISTS {new} ON {tbl} (user_id, mastered)"
+        elif 'due' in new:
+            sql_create = f"CREATE INDEX IF NOT EXISTS {new} ON {tbl} (user_id, due_at)"
+        else:  # weak index
+            sql_create = f"CREATE INDEX IF NOT EXISTS {new} ON {tbl} (user_id, is_weak)"
+        cursor.execute(sql_create)
+        cursor.execute(f"DROP INDEX IF EXISTS {found}")
 
 
 class Migration(migrations.Migration):
