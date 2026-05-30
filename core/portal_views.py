@@ -12,9 +12,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
+from django.views.decorators.http import require_http_methods
 
 from .models import Mondai
 from .roles import ROLE_SENSEI, ROLE_SHITSUMON, ROLE_STUDENT
+from payments.models import MasterPayments, SubscriptionPlan
 
 
 @dataclass(frozen=True)
@@ -428,3 +430,70 @@ def sensei_review(request: HttpRequest, public_id: str) -> HttpResponse:
         messages.error(request, "Invalid action")
 
     return render(request, "core/sensei_review.html", {"mondai": mondai})
+
+
+# --- Admin Controller --------------------------------------------------------
+
+@login_required
+def admin_controller(request: HttpRequest) -> HttpResponse:
+    """Admin controller: manage payments toggle and subscription plans."""
+    if not request.user.is_staff:
+        return HttpResponse("Forbidden", status=403)
+
+    # Handle POST actions
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+
+        if action == "toggle_payments":
+            obj, _ = MasterPayments.objects.get_or_create(id=1)
+            obj.enabled = not obj.enabled
+            obj.save()
+            state = "enabled" if obj.enabled else "disabled"
+            messages.success(request, f"Master payments {state}.")
+
+        elif action == "create_plan":
+            name = request.POST.get("name", "").strip()
+            price = request.POST.get("price_inr", "").strip()
+            days = request.POST.get("duration_days", "30").strip()
+            desc = request.POST.get("description", "").strip()
+            if name and price:
+                try:
+                    SubscriptionPlan.objects.create(
+                        name=name,
+                        price_inr=float(price),
+                        duration_days=int(days) if days.isdigit() else 30,
+                        description=desc,
+                    )
+                    messages.success(request, f"Plan '{name}' created.")
+                except Exception as e:
+                    messages.error(request, f"Error: {e}")
+            else:
+                messages.error(request, "Name and price are required.")
+
+        elif action == "toggle_plan":
+            plan_id = request.POST.get("plan_id", "")
+            try:
+                plan = SubscriptionPlan.objects.get(id=int(plan_id))
+                plan.is_active = not plan.is_active
+                plan.save()
+                messages.success(request, f"Plan '{plan.name}' {'activated' if plan.is_active else 'deactivated'}.")
+            except SubscriptionPlan.DoesNotExist:
+                messages.error(request, "Plan not found.")
+
+        elif action == "delete_plan":
+            plan_id = request.POST.get("plan_id", "")
+            try:
+                plan = SubscriptionPlan.objects.get(id=int(plan_id))
+                plan.delete()
+                messages.success(request, "Plan deleted.")
+            except SubscriptionPlan.DoesNotExist:
+                messages.error(request, "Plan not found.")
+
+        return redirect("admin_controller")
+
+    master = MasterPayments.objects.order_by("id").first()
+    plans = SubscriptionPlan.objects.all()
+    return render(request, "core/admin_controller.html", {
+        "master_enabled": master.enabled if master else True,
+        "plans": plans,
+    })

@@ -24,6 +24,7 @@ from .models import (
 	MondaiAnswerAttempt,
 	MondaiQuestion,
 	Question,
+	QuizScore,
 	ReviewQueue,
 	User,
 	VideoCompletion,
@@ -249,7 +250,7 @@ def _iso_week_start_end(week_start: timezone.datetime.date) -> tuple[str, str]:
 
 @api_login_required
 def leaderboard(request: HttpRequest) -> JsonResponse:
-	"""Weekly leaderboard based on XP earned in the last 7 days."""
+	"""Weekly leaderboard — scoped to the user's college if they have one."""
 
 	from datetime import timedelta
 
@@ -258,9 +259,14 @@ def leaderboard(request: HttpRequest) -> JsonResponse:
 
 	seven_days_ago = timezone.now() - timedelta(days=7)
 
+	# Filter to same college when user has one
+	user_college = getattr(request.user, "college_id", None)
+	qs = User.objects.filter(is_active=True)
+	if user_college:
+		qs = qs.filter(college_id=user_college)
+
 	rows = (
-		User.objects.filter(is_active=True)
-		.annotate(
+		qs.annotate(
 			xp_week=Coalesce(
 				Sum(
 					"xp_events__points",
@@ -269,6 +275,7 @@ def leaderboard(request: HttpRequest) -> JsonResponse:
 				0,
 			)
 		)
+		.select_related("college", "profile")
 		.order_by("-xp_week", "-total_points", "-streak_count", "username")
 	)
 
@@ -277,19 +284,23 @@ def leaderboard(request: HttpRequest) -> JsonResponse:
 		full_name = (u.get_full_name() or u.username).strip()
 		initials = "".join([p[:1].upper() for p in full_name.split()[:2]]) or (u.username[:2].upper())
 		xp_week = int(getattr(u, "xp_week", 0) or 0)
+		profile = getattr(u, "profile", None)
 		entries.append(
 			{
 				"rank": idx,
+				"id": u.id,
 				"name": full_name,
+				"display_username": getattr(profile, "display_username", None) or u.username,
 				"avatar": initials,
 				"level": getattr(u, "target_level", None),
 				"streak": int(getattr(u, "streak_count", 0) or 0),
 				"points_week": xp_week,
 				"points_total": int(getattr(u, "total_points", 0) or 0),
+				"college": u.college.name if u.college else None,
 			}
 		)
 
-	return JsonResponse({"entries": entries})
+	return JsonResponse({"entries": entries, "college_scoped": bool(user_college), "college_name": user.college.name if user_college and user.college else None})
 @api_login_required
 def current_week_content(request: HttpRequest) -> JsonResponse:
 	"""Return current calendar-week Mondai content (approved + fixed week)."""
@@ -1634,3 +1645,366 @@ def update_growth_theme(request: HttpRequest) -> JsonResponse:
 	user: User = request.user  # type: ignore[assignment]
 	User.objects.filter(pk=user.pk).update(growth_theme=theme)
 	return JsonResponse({'growth_theme': theme})
+
+
+# ── Quiz Score Save ───────────────────────────────────────────────────────────
+
+@api_login_required
+def save_quiz_score(request: HttpRequest) -> JsonResponse:
+	"""POST { unit_id, quiz_type, score, total } to save a quiz result and award XP."""
+	if request.method != 'POST':
+		return JsonResponse({'detail': 'POST required'}, status=405)
+
+	try:
+		payload = json.loads(request.body.decode('utf-8'))
+	except Exception:
+		return JsonResponse({'detail': 'Invalid JSON'}, status=400)
+
+	unit_id = payload.get('unit_id')
+	quiz_type = (payload.get('quiz_type') or 'vocab').strip()
+	score = int(payload.get('score', 0))
+	total = int(payload.get('total', 0))
+
+	valid_types = {'vocab', 'grammar', 'pakka', 'daily_revise'}
+	if quiz_type not in valid_types:
+		return JsonResponse({'detail': 'Invalid quiz_type'}, status=400)
+
+	unit = None
+	if unit_id:
+		from course.models import Unit as CourseUnit
+		unit = CourseUnit.objects.filter(pk=unit_id).first()
+
+	percentage = round((score / total) * 100) if total > 0 else 0
+
+	# XP rates per quiz type
+	xp_rate_map = {
+		'vocab': 3,
+		'grammar': 4,
+		'pakka': 5,
+		'daily_revise': 3,
+	}
+	xp_per_correct = xp_rate_map.get(quiz_type, 2)
+	xp_earned = score * xp_per_correct
+
+	qs = QuizScore.objects.create(
+		user=request.user,
+		unit=unit,
+		quiz_type=quiz_type,
+		score=score,
+		total=total,
+		xp_earned=xp_earned,
+	)
+
+	if xp_earned > 0:
+		award_xp(user_id=request.user.pk, points=xp_earned, reason=f'{quiz_type}_quiz')
+		touch_study_streak(user_id=request.user.pk, today=timezone.localdate())
+
+	return JsonResponse({
+		'saved': True,
+		'percentage': percentage,
+		'xp_earned': xp_earned,
+		'score_id': qs.id,
+	})
+
+
+@api_login_required
+def quiz_scores_history(request: HttpRequest) -> JsonResponse:
+	"""Return last 20 quiz scores for the current user."""
+	scores = QuizScore.objects.filter(user=request.user).select_related('unit').order_by('-created_at')[:20]
+	data = [
+		{
+			'id': s.id,
+			'quiz_type': s.quiz_type,
+			'unit': s.unit.name if s.unit else None,
+			'score': s.score,
+			'total': s.total,
+			'percentage': s.percentage,
+			'xp_earned': s.xp_earned,
+			'created_at': s.created_at.isoformat(),
+		}
+		for s in scores
+	]
+	return JsonResponse({'scores': data})
+
+
+# ── Daily Revise API ──────────────────────────────────────────────────────────
+
+@api_login_required
+def daily_revise_units(request: HttpRequest) -> JsonResponse:
+	"""Return units where user scored >= 75% in vocab or grammar quiz.
+	Also returns count of pending wrong-answer review items due today.
+	"""
+	user: User = request.user  # type: ignore[assignment]
+	from course.models import Unit as CourseUnit
+	from .models import DailyReviseQuestion
+	import datetime
+
+	today = datetime.date.today()
+
+	# Find units with >= 75% quiz score
+	scored_units = (
+		QuizScore.objects
+		.filter(user=user, percentage__gte=75)
+		.values_list('unit_id', flat=True)
+		.distinct()
+	)
+	units = CourseUnit.objects.filter(pk__in=scored_units, is_active=True).select_related('level')
+
+	data = [
+		{
+			'id': u.id,
+			'unit_number': u.unit_number,
+			'name': u.name or f'Unit {u.unit_number}',
+			'level': u.level.name if u.level else '',
+		}
+		for u in units
+	]
+
+	# Count of pending wrong-answer items due today
+	pending_wrongs = DailyReviseQuestion.objects.filter(
+		user=user, is_active=True, next_review_date__lte=today
+	).count()
+
+	return JsonResponse({'units': data, 'pending_wrongs': pending_wrongs})
+
+
+@api_login_required
+def daily_revise_quiz(request: HttpRequest) -> JsonResponse:
+	"""Return a randomized quiz pool for daily revision.
+
+	Query params:
+	  - mode: 'all' | 'vocab' | 'grammar' (default 'all')
+	  - include_wrongs: '1' (default) — include wrong-answer review items
+	"""
+	user: User = request.user  # type: ignore[assignment]
+	from course.models import Unit as CourseUnit, VocabularyItem
+	from .models import DailyReviseQuestion
+	import datetime
+
+	today = datetime.date.today()
+	mode = request.GET.get('mode', 'all')
+	# Frontend offers a Grammar toggle; until grammar MCQ is implemented for units,
+	# treat 'grammar' as 'vocab' to avoid returning an empty quiz.
+	if mode == 'grammar':
+		mode = 'vocab'
+	include_wrongs = request.GET.get('include_wrongs', '1') != '0'
+
+	# ── Gather eligible units (>= 75% quiz score) ────────────────────────────
+	scored_units_ids = list(
+		QuizScore.objects
+		.filter(user=user, percentage__gte=75)
+		.values_list('unit_id', flat=True)
+		.distinct()
+	)
+
+	questions = []
+
+	# ── Vocabulary questions from eligible units ──────────────────────────────
+	if mode in ('all', 'vocab'):
+		vocab_qs = VocabularyItem.objects.filter(
+			unit_id__in=scored_units_ids, unit__is_active=True
+		).select_related('unit')
+		vocab_qs = _filter_vocab_by_user_exam(vocab_qs, user)
+		for item in vocab_qs:
+			values = [item.correct, item.wrong1, item.wrong2, item.wrong3]
+			random.shuffle(values)
+			keys = ['A', 'B', 'C', 'D']
+			shuffled = dict(zip(keys, values))
+			correct_key = next(k for k, v in shuffled.items() if v == item.correct)
+			questions.append({
+				'id': item.id,
+				'source': 'unit',
+				'type': 'vocab',
+				'unit_id': item.unit_id,
+				'unit_name': item.unit.name or f'Unit {item.unit.unit_number}',
+				'target': item.target,
+				'options': shuffled,
+				'correct_answer': correct_key,
+				'is_review': False,
+			})
+
+	# Grammar MCQ: GrammarLearnItem has no MCQ fields; grammar daily revise skipped for now.
+
+	# ── Wrong-answer review items due today ───────────────────────────────────
+	if include_wrongs:
+		pending = DailyReviseQuestion.objects.filter(
+			user=user, is_active=True, next_review_date__lte=today
+		).select_related('vocabulary_item', 'grammar_item',
+						  'vocabulary_item__unit', 'grammar_item__unit')
+
+		for rev in pending:
+			if rev.question_type == 'vocab' and rev.vocabulary_item:
+				item = rev.vocabulary_item
+				values = [item.correct, item.wrong1, item.wrong2, item.wrong3]
+				random.shuffle(values)
+				keys = ['A', 'B', 'C', 'D']
+				shuffled = dict(zip(keys, values))
+				correct_key = next(k for k, v in shuffled.items() if v == item.correct)
+				questions.append({
+					'id': item.id,
+					'review_id': rev.id,
+					'source': 'review',
+					'type': 'vocab',
+					'unit_id': item.unit_id,
+					'unit_name': item.unit.name if item.unit else '',
+					'target': item.target,
+					'options': shuffled,
+					'correct_answer': correct_key,
+					'is_review': True,
+					'wrong_count': rev.wrong_count,
+				})
+			# grammar review items skipped (no MCQ grammar model)
+
+	random.shuffle(questions)
+	return JsonResponse({'questions': questions, 'total': len(questions)})
+
+
+@api_login_required
+def daily_revise_answer(request: HttpRequest) -> JsonResponse:
+	"""Record a daily revise answer and update spaced-repetition schedule.
+
+	POST body:
+	  {
+	    "question_type": "vocab" | "grammar",
+	    "item_id": <int>,           -- VocabularyItem.id or GrammarLearnItem.id
+	    "is_correct": true/false,
+	    "review_id": <int|null>     -- DailyReviseQuestion.id if this is a review item
+	  }
+
+	Algorithm:
+	  - Wrong answer (new item): create DailyReviseQuestion with next_review_date = today + 4
+	  - Wrong answer (existing review item): extend by 2 days from today
+	  - Correct answer (review item): mark is_active = False (stop repeating)
+	  - Correct answer (new item): do nothing (no tracking needed)
+	"""
+	if request.method != 'POST':
+		return JsonResponse({'error': 'POST required'}, status=405)
+
+	import json, datetime
+	from .models import DailyReviseQuestion
+	from course.models import VocabularyItem
+
+	try:
+		body = json.loads(request.body or '{}')
+	except ValueError:
+		return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+	user: User = request.user  # type: ignore[assignment]
+	today = datetime.date.today()
+	question_type = body.get('question_type')
+	item_id = body.get('item_id')
+	is_correct = bool(body.get('is_correct', False))
+	review_id = body.get('review_id')
+
+	if question_type not in ('vocab', 'grammar') or not item_id:
+		return JsonResponse({'error': 'question_type and item_id required'}, status=400)
+
+	xp_earned = 0
+
+	if review_id:
+		# This is a review item
+		try:
+			rev = DailyReviseQuestion.objects.get(id=review_id, user=user)
+		except DailyReviseQuestion.DoesNotExist:
+			return JsonResponse({'error': 'Review item not found'}, status=404)
+
+		if is_correct:
+			rev.is_active = False
+			rev.last_answered_date = today
+			rev.save()
+			xp_earned = 5  # bonus for clearing a review
+			from .xp import award_xp
+			award_xp(user.id, xp_earned, 'daily_revise_correct_review')
+		else:
+			# Extend: next_review_date = today + 2 extra days
+			rev.wrong_count += 1
+			rev.review_interval = 2
+			rev.next_review_date = today + datetime.timedelta(days=2)
+			rev.last_answered_date = today
+			rev.save()
+	else:
+		# New question (not a review item)
+		if not is_correct:
+			# Create or update DailyReviseQuestion
+			if question_type == 'vocab':
+				try:
+					vocab = VocabularyItem.objects.get(id=item_id)
+				except VocabularyItem.DoesNotExist:
+					return JsonResponse({'error': 'VocabularyItem not found'}, status=404)
+				rev, created = DailyReviseQuestion.objects.get_or_create(
+					user=user, vocabulary_item=vocab,
+					defaults={
+						'question_type': 'vocab',
+						'next_review_date': today + datetime.timedelta(days=4),
+						'review_interval': 4,
+						'last_answered_date': today,
+						'is_active': True,
+					}
+				)
+				if not created and rev.is_active:
+					# Already tracking — reset with +4
+					rev.wrong_count += 1
+					rev.review_interval = 4
+					rev.next_review_date = today + datetime.timedelta(days=4)
+					rev.last_answered_date = today
+					rev.save()
+				elif not created and not rev.is_active:
+					# Was cleared before, reactivate
+					rev.is_active = True
+					rev.wrong_count += 1
+					rev.review_interval = 4
+					rev.next_review_date = today + datetime.timedelta(days=4)
+					rev.last_answered_date = today
+					rev.save()
+			else:
+				# Grammar MCQ not yet supported
+				pass
+		else:
+			# Correct on first try — award small XP
+			xp_earned = 3
+			from .xp import award_xp
+			award_xp(user.id, xp_earned, 'daily_revise_correct')
+
+	return JsonResponse({'success': True, 'xp_earned': xp_earned})
+
+
+@api_login_required
+def daily_revise_content(request: HttpRequest, unit_id: int) -> JsonResponse:
+	"""Return ALL vocabulary and grammar questions for a unit (for daily revision)."""
+	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
+	user: User = request.user  # type: ignore[assignment]
+
+	# All vocabulary — shuffle options
+	vocab_qs = _filter_vocab_by_user_exam(unit.vocabulary.all(), user).order_by('order', 'id')
+	vocab_questions = []
+	for item in vocab_qs:
+		values = [item.correct, item.wrong1, item.wrong2, item.wrong3]
+		random.shuffle(values)
+		keys = ['A', 'B', 'C', 'D']
+		shuffled = dict(zip(keys, values))
+		correct_key = next(k for k, v in shuffled.items() if v == item.correct)
+		vocab_questions.append({
+			'id': item.id,
+			'type': 'vocab',
+			'target': item.target,
+			'options': shuffled,
+			'correct_answer': correct_key,
+		})
+
+	# All grammar questions from GrammarPakka (if available)
+	grammar_qs = unit.grammar.all().order_by('order', 'id')
+	grammar_data = [
+		{'id': g.id, 'type': 'grammar_info', 'title': g.title, 'content': g.content}
+		for g in grammar_qs
+	]
+
+	return JsonResponse({
+		'unit': {
+			'id': unit.id,
+			'name': unit.name or f'Unit {unit.unit_number}',
+			'level': unit.level.name if unit.level else '',
+		},
+		'vocab_questions': vocab_questions,
+		'grammar_info': grammar_data,
+		'total_vocab': len(vocab_questions),
+	})

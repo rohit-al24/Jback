@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import MasterPayments
+from .models import MasterPayments, SubscriptionPlan
 
 
 @admin.register(MasterPayments)
@@ -13,3 +13,9 @@ class MasterPaymentsAdmin(admin.ModelAdmin):
         if MasterPayments.objects.exists():
             return False
         return super().has_add_permission(request)
+
+
+@admin.register(SubscriptionPlan)
+class SubscriptionPlanAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'price_inr', 'duration_days', 'is_active', 'created_at')
+    list_editable = ('is_active',)

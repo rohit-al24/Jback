@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 
 from . import auth_views, billing_views, path_views, portal_views, referral_views, review_views, views
 from payments import views as payments_views
@@ -9,6 +9,7 @@ urlpatterns = [
     path("", portal_views.portal_index, name="portal_index"),
     path("portal/login/", portal_views.portal_login, name="portal_login"),
     path("portal/logout/", portal_views.portal_logout, name="portal_logout"),
+    path("portal/admin-controller/", portal_views.admin_controller, name="admin_controller"),
 
     # Shitsumon (HTML)
     path("shitsumon/", portal_views.shitsumon_dashboard, name="shitsumon_dashboard"),
@@ -75,6 +76,22 @@ urlpatterns = [
     path("api/course/vocab-state/submit/", views.vocab_state_submit, name="vocab_state_submit"),
     path("api/course/unit/<int:unit_id>/mastery/", views.unit_mastery, name="unit_mastery"),
     path("api/auth/growth-theme/", auth_views.update_growth_theme, name="update_growth_theme"),
+
+    # Quiz score saving + history
+    path("api/quiz/save-score/", views.save_quiz_score, name="save_quiz_score"),
+    path("api/quiz/scores/", views.quiz_scores_history, name="quiz_scores_history"),
+
+    # Daily Revise
+    path("api/daily-revise/units/", views.daily_revise_units, name="daily_revise_units"),
+    path("api/daily-revise/quiz/", views.daily_revise_quiz, name="daily_revise_quiz"),
+    path("api/daily-revise/answer/", views.daily_revise_answer, name="daily_revise_answer"),
+    path("api/daily-revise/unit/<int:unit_id>/content/", views.daily_revise_content, name="daily_revise_content"),
+
+    # Social (friends, chat, profile)
+    path("api/social/", include("social.urls")),
+
+    # Vocabulary Hints
+    path("api/hints/", include("hints.urls")),
 
     path("api/billing/plans/", billing_views.plans, name="plans"),
     path("api/billing/cashfree-order/", billing_views.cashfree_create_order, name="cashfree_create_order"),

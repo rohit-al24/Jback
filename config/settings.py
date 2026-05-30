@@ -108,6 +108,9 @@ INSTALLED_APPS = [
     'core.apps.CoreConfig',
     'course.apps.CourseConfig',
     'payments.apps.PaymentsConfig',
+    'social.apps.SocialConfig',
+    'hints.apps.HintsConfig',
+    'notifications_app.apps.NotificationsAppConfig',
 ]
 
 MIDDLEWARE = [

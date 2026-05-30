@@ -25,3 +25,19 @@ def payments_enabled() -> bool:
     """Return global payments feature flag; defaults to True."""
     obj = MasterPayments.objects.order_by('id').first()
     return bool(obj.enabled) if obj else True
+
+
+class SubscriptionPlan(models.Model):
+    """DB-driven subscription plans shown in the app."""
+    name = models.CharField(max_length=120)
+    price_inr = models.DecimalField(max_digits=10, decimal_places=2, help_text='Price in INR')
+    duration_days = models.PositiveIntegerField(default=30)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['price_inr']
+
+    def __str__(self) -> str:
+        return f'{self.name} (₹{self.price_inr}/{self.duration_days}d)'

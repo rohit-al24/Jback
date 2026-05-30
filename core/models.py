@@ -504,3 +504,127 @@ class MondaiQuestion(models.Model):
 	def __str__(self) -> str:
 		return f"MondaiQ{self.pk} ({self.mondai.public_id})"
 
+
+# ── Separate XP table (replaces inline User.total_points as single source) ──
+
+class UserXP(models.Model):
+	"""Dedicated XP record per user. Separate from XPEvent log."""
+
+	class ActivityType(models.TextChoices):
+		VOCAB_QUIZ = "vocab_quiz", "Vocabulary Quiz"
+		GRAMMAR_QUIZ = "grammar_quiz", "Grammar Quiz"
+		PAKKA_ADAPTIVE = "pakka_adaptive", "Pakka Adaptive"
+		DAILY_REVISE = "daily_revise", "Daily Revise"
+		STREAK_BONUS = "streak_bonus", "Streak Bonus"
+		REFERRAL = "referral", "Referral"
+		OTHER = "other", "Other"
+
+	user = models.OneToOneField(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.CASCADE,
+		related_name="xp_record",
+	)
+	total_xp = models.PositiveIntegerField(default=0)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	def __str__(self) -> str:
+		return f"UserXP(user={self.user_id}, total={self.total_xp})"
+
+
+class UserStreak(models.Model):
+	"""Dedicated streak record per user."""
+
+	user = models.OneToOneField(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.CASCADE,
+		related_name="streak_record",
+	)
+	current_streak = models.PositiveIntegerField(default=0)
+	longest_streak = models.PositiveIntegerField(default=0)
+	last_activity_date = models.DateField(null=True, blank=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	def __str__(self) -> str:
+		return f"UserStreak(user={self.user_id}, current={self.current_streak})"
+
+
+class QuizScore(models.Model):
+	"""Saves quiz attempt scores for vocabulary and grammar quizzes."""
+
+	class QuizType(models.TextChoices):
+		VOCAB = "vocab", "Vocabulary Quiz"
+		GRAMMAR = "grammar", "Grammar Quiz"
+		PAKKA = "pakka", "Pakka Adaptive"
+		DAILY_REVISE = "daily_revise", "Daily Revise"
+
+	user = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.CASCADE,
+		related_name="quiz_scores",
+	)
+	unit = models.ForeignKey(
+		"course.Unit",
+		on_delete=models.CASCADE,
+		related_name="quiz_scores",
+		null=True,
+		blank=True,
+	)
+	quiz_type = models.CharField(max_length=16, choices=QuizType.choices)
+	score = models.PositiveIntegerField(help_text="Correct answers")
+	total = models.PositiveIntegerField(help_text="Total questions")
+	percentage = models.PositiveSmallIntegerField(default=0)
+	xp_earned = models.PositiveSmallIntegerField(default=0)
+	created_at = models.DateTimeField(default=timezone.now)
+
+	class Meta:
+		indexes = [
+			models.Index(fields=["user", "quiz_type", "created_at"]),
+			models.Index(fields=["user", "unit"]),
+		]
+		ordering = ["-created_at"]
+
+	def save(self, *args, **kwargs):
+		if self.total > 0:
+			self.percentage = round((self.score / self.total) * 100)
+		super().save(*args, **kwargs)
+
+	def __str__(self) -> str:
+		return f"QuizScore(user={self.user_id}, type={self.quiz_type}, {self.score}/{self.total})"
+
+
+
+class DailyReviseQuestion(models.Model):
+    """Tracks wrong-answer items for spaced-repetition daily revision."""
+    QUESTION_TYPE_VOCAB = 'vocab'
+    QUESTION_TYPE_GRAMMAR = 'grammar'
+    QUESTION_TYPES = [
+        (QUESTION_TYPE_VOCAB, 'Vocabulary'),
+        (QUESTION_TYPE_GRAMMAR, 'Grammar'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='daily_revise_questions'
+    )
+    vocabulary_item = models.ForeignKey(
+        'course.VocabularyItem', null=True, blank=True, on_delete=models.CASCADE
+    )
+    grammar_item = models.ForeignKey(
+        'course.GrammarLearnItem', null=True, blank=True, on_delete=models.CASCADE
+    )
+    question_type = models.CharField(max_length=10, choices=QUESTION_TYPES)
+    wrong_count = models.PositiveIntegerField(default=1)
+    next_review_date = models.DateField()
+    review_interval = models.PositiveIntegerField(default=4)  # days
+    last_answered_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # One entry per user per item � vocab or grammar must be exclusive
+        indexes = [
+            models.Index(fields=['user', 'next_review_date', 'is_active']),
+        ]
+
+    def __str__(self) -> str:
+        return f'DailyReviseQuestion(user={self.user_id}, type={self.question_type}, next={self.next_review_date})'

@@ -47,7 +47,7 @@ def csrf(request: HttpRequest) -> JsonResponse:
 
 def me(request: HttpRequest) -> JsonResponse:
     if not request.user.is_authenticated:
-        return JsonResponse({"authenticated": False})
+        return JsonResponse({"authenticated": False}, status=401)
     return JsonResponse({"authenticated": True, "user": _user_payload(request.user)})
 
 

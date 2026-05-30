@@ -1,0 +1,145 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Admin Controller · BenGo{% endblock %}
+
+{% block head %}
+<style>
+  .toggle { display:inline-flex; align-items:center; gap:10px; }
+  .toggle-track { width:52px; height:28px; border-radius:14px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.15); position:relative; cursor:pointer; transition:background 0.2s; }
+  .toggle-track.on { background:rgba(16,185,129,0.4); border-color:rgba(16,185,129,0.5); }
+  .toggle-track.off { background:rgba(220,38,38,0.25); border-color:rgba(220,38,38,0.3); }
+  .toggle-thumb { position:absolute; top:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:left 0.2s; box-shadow:0 1px 4px rgba(0,0,0,0.4); }
+  .toggle-track.on .toggle-thumb { left:27px; }
+  .toggle-track.off .toggle-thumb { left:3px; }
+  .badge-on  { display:inline-flex; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:800; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.35); color:#6ee7b7; }
+  .badge-off { display:inline-flex; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:800; background:rgba(220,38,38,0.15); border:1px solid rgba(220,38,38,0.35); color:#fca5a5; }
+  .badge-plan-on  { display:inline-flex; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:800; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#6ee7b7; }
+  .badge-plan-off { display:inline-flex; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:800; background:rgba(107,114,128,0.2); border:1px solid rgba(107,114,128,0.25); color:#9ca3af; }
+  .sep { height:1px; background:rgba(255,255,255,0.07); margin:24px 0; }
+  .form-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  @media (max-width:700px) { .form-row { grid-template-columns:1fr; } }
+  .plan-row { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.06); flex-wrap:wrap; }
+  .plan-row:last-child { border-bottom:none; }
+  .plan-name { flex:1; min-width:140px; font-weight:800; }
+  .plan-meta { font-size:12px; color:var(--muted); }
+  .plan-actions { display:flex; gap:8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="h1" style="margin-bottom:4px">Admin Controller</div>
+      <div class="muted small">Manage payments and subscription plans.</div>
+    </div>
+    <a class="btn" href="{% url 'portal_index' %}">← Back to Portal</a>
+  </div>
+</div>
+
+{% if messages %}
+<div class="msg">
+  {% for message in messages %}
+  <div class="card" style="border-color:{% if message.tags == 'error' %}rgba(220,38,38,0.4){% else %}rgba(16,185,129,0.4){% endif %}">
+    {{ message }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Master Payments Toggle ───────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:16px">
+  <div class="h2">Master Payments Switch</div>
+  <div class="muted small" style="margin-bottom:16px">
+    When <strong>disabled</strong>, all paywall locks are removed and every user has full access. 
+    Subscription flows are hidden. When <strong>enabled</strong>, only paid users can access premium content.
+  </div>
+
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div>
+      Current status:
+      {% if master_enabled %}
+        <span class="badge-on">ENABLED — Paywall Active</span>
+      {% else %}
+        <span class="badge-off">DISABLED — All Access Free</span>
+      {% endif %}
+    </div>
+    <form method="post" style="display:inline">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="toggle_payments">
+      <button class="btn {% if master_enabled %}btn-primary{% endif %}" type="submit">
+        {% if master_enabled %}Disable Payments (Open Access){% else %}Enable Payments (Activate Paywall){% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ── Subscription Plans ────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="h2">Subscription Plans</div>
+  <div class="muted small" style="margin-bottom:20px">Create and manage plans shown to users in the app.</div>
+
+  {% if plans %}
+  <div style="border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;margin-bottom:20px">
+    {% for plan in plans %}
+    <div class="plan-row">
+      <div class="plan-name">
+        {{ plan.name }}
+        {% if plan.is_active %}<span class="badge-plan-on">Active</span>{% else %}<span class="badge-plan-off">Inactive</span>{% endif %}
+      </div>
+      <div class="plan-meta">₹{{ plan.price_inr }} · {{ plan.duration_days }} days</div>
+      {% if plan.description %}
+      <div class="plan-meta" style="flex:2;min-width:160px">{{ plan.description }}</div>
+      {% endif %}
+      <div class="plan-actions">
+        <form method="post" style="display:inline">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="toggle_plan">
+          <input type="hidden" name="plan_id" value="{{ plan.id }}">
+          <button class="btn" type="submit" style="padding:8px 12px;font-size:12px">
+            {% if plan.is_active %}Deactivate{% else %}Activate{% endif %}
+          </button>
+        </form>
+        <form method="post" style="display:inline" onsubmit="return confirm('Delete plan \'{{ plan.name }}\'?')">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="delete_plan">
+          <input type="hidden" name="plan_id" value="{{ plan.id }}">
+          <button class="btn" type="submit" style="padding:8px 12px;font-size:12px;border-color:rgba(220,38,38,0.4);color:#fca5a5">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="muted small" style="margin-bottom:20px">No plans yet. Create one below.</div>
+  {% endif %}
+
+  <div class="sep"></div>
+  <div class="h2" style="margin-bottom:12px">Create New Plan</div>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create_plan">
+    <div class="form-row">
+      <div>
+        <label>Plan Name *</label>
+        <input type="text" name="name" placeholder="e.g. Monthly Plan" required>
+      </div>
+      <div>
+        <label>Price (₹ INR) *</label>
+        <input type="number" name="price_inr" placeholder="e.g. 2" step="0.01" min="0" required>
+      </div>
+      <div>
+        <label>Duration (days)</label>
+        <input type="number" name="duration_days" placeholder="30" value="30" min="1">
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <label>Description</label>
+      <textarea name="description" rows="2" placeholder="Optional: describe what's included"></textarea>
+    </div>
+    <div class="actions" style="margin-top:16px">
+      <button class="btn btn-primary" type="submit">Create Plan</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
