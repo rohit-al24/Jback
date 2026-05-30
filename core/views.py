@@ -1034,19 +1034,58 @@ def units_list(request: HttpRequest, level_id: int) -> JsonResponse:
 
 @api_login_required
 def vocabulary_study(request: HttpRequest, unit_id: int) -> JsonResponse:
-	"""Return vocabulary items for study mode filtered by the user's exam level."""
+	"""Return vocabulary items for study mode filtered by the user's exam level.
+
+	Each item includes hint metadata:
+	  my_hint: str | null
+	  friends_hints: [{user_id, display_name}]  (friends who have a hint for this word)
+	"""
 	unit = get_object_or_404(Unit, pk=unit_id, is_active=True)
-	vocab = _filter_vocab_by_user_exam(unit.vocabulary.all(), request.user).order_by('order', 'id')
-	
+	vocab_qs = _filter_vocab_by_user_exam(unit.vocabulary.all(), request.user).order_by('order', 'id')
+	vocab_list = list(vocab_qs)
+	vocab_ids = [v.id for v in vocab_list]
+
+	# Fetch my hints in bulk
+	from hints.models import VocabularyHint
+	my_hints: dict = {
+		h.vocabulary_item_id: h.hint_text
+		for h in VocabularyHint.objects.filter(user=request.user, vocabulary_item_id__in=vocab_ids)
+	}
+
+	# Fetch friends who have hints for these vocab items
+	from django.db.models import Q as _Q
+	from social.models import Friendship
+	uid = request.user.id
+	friendships = Friendship.objects.filter(_Q(user1_id=uid) | _Q(user2_id=uid))
+	friend_ids = [f.user2_id if f.user1_id == uid else f.user1_id for f in friendships]
+
+	from collections import defaultdict
+	friends_hints_by_vocab: dict = defaultdict(list)
+	if friend_ids:
+		friends_qs = (
+			VocabularyHint.objects
+			.filter(vocabulary_item_id__in=vocab_ids, user_id__in=friend_ids)
+			.select_related('user', 'user__profile')
+		)
+		for h in friends_qs:
+			profile = getattr(h.user, 'profile', None)
+			display = getattr(profile, 'display_username', None) or h.user.first_name or h.user.username
+			friends_hints_by_vocab[h.vocabulary_item_id].append({
+				'user_id': h.user_id,
+				'display_name': display,
+			})
+
 	data = [
 		{
 			'id': item.id,
 			'target': item.target,
 			'correct': item.correct,
+			'my_hint': my_hints.get(item.id),
+			'friends_hints': friends_hints_by_vocab.get(item.id, []),
 		}
-		for item in vocab
+		for item in vocab_list
 	]
-	
+
 	return JsonResponse({
 		'unit': {
 			'id': unit.id,
@@ -1651,7 +1690,13 @@ def update_growth_theme(request: HttpRequest) -> JsonResponse:
 
 @api_login_required
 def save_quiz_score(request: HttpRequest) -> JsonResponse:
-	"""POST { unit_id, quiz_type, score, total } to save a quiz result and award XP."""
+	"""POST { unit_id, quiz_type, score, total } to save a quiz result and award XP.
+
+	XP is only awarded when:
+	- percentage >= 75
+	- User has not previously reached 75%+ for this quiz_type + unit combination
+	  (if they already passed 75%, only incremental improvement earns XP)
+	"""
 	if request.method != 'POST':
 		return JsonResponse({'detail': 'POST required'}, status=405)
 
@@ -1684,7 +1729,27 @@ def save_quiz_score(request: HttpRequest) -> JsonResponse:
 		'daily_revise': 3,
 	}
 	xp_per_correct = xp_rate_map.get(quiz_type, 2)
-	xp_earned = score * xp_per_correct
+
+	# Only award XP for scores >= 75%, and only for new progress beyond previous best
+	xp_earned = 0
+	already_passed = False
+	passed_75 = percentage >= 75
+
+	if passed_75:
+		prev_best = (
+			QuizScore.objects
+			.filter(user=request.user, quiz_type=quiz_type, unit=unit, percentage__gte=75)
+			.order_by('-score')
+			.first()
+		)
+		if prev_best is None:
+			# First time reaching 75%+ — award full XP
+			xp_earned = score * xp_per_correct
+		else:
+			already_passed = True
+			# Award XP only for improvement beyond previous best score
+			new_correct = max(0, score - prev_best.score)
+			xp_earned = new_correct * xp_per_correct
 
 	qs = QuizScore.objects.create(
 		user=request.user,
@@ -1704,6 +1769,8 @@ def save_quiz_score(request: HttpRequest) -> JsonResponse:
 		'percentage': percentage,
 		'xp_earned': xp_earned,
 		'score_id': qs.id,
+		'passed_75': passed_75,
+		'already_passed': already_passed,
 	})
 
 
