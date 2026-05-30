@@ -252,6 +252,8 @@ def _iso_week_start_end(week_start: timezone.datetime.date) -> tuple[str, str]:
 def leaderboard(request: HttpRequest) -> JsonResponse:
 	"""Weekly leaderboard — scoped to the user's college if they have one."""
 
+	user: User = request.user  # type: ignore[assignment]
+
 	from datetime import timedelta
 
 	from django.db.models import Sum
@@ -300,7 +302,14 @@ def leaderboard(request: HttpRequest) -> JsonResponse:
 			}
 		)
 
-	return JsonResponse({"entries": entries, "college_scoped": bool(user_college), "college_name": user.college.name if user_college and user.college else None})
+	college = getattr(user, "college", None)
+	return JsonResponse(
+		{
+			"entries": entries,
+			"college_scoped": bool(user_college),
+			"college_name": college.name if user_college and college else None,
+		}
+	)
 @api_login_required
 def current_week_content(request: HttpRequest) -> JsonResponse:
 	"""Return current calendar-week Mondai content (approved + fixed week)."""
