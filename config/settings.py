@@ -89,7 +89,10 @@ if (not DEBUG) or (os.environ.get("DJANGO_SECURE_COOKIES") == "1"):
 # When running behind Cloudflare (or other reverse proxies) trust the
 # X-Forwarded-Proto header so Django knows the original request scheme.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-USE_X_FORWARDED_HOST = True
+# Cloudflare + cloudflared already forward the correct Host header.
+# Relying on X-Forwarded-Host can cause intermittent 400s if multiple proxies
+# append values (comma-separated), which Django treats as an invalid host.
+USE_X_FORWARDED_HOST = False
 
 
 # Application definition
