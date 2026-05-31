@@ -10,7 +10,7 @@ from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_http_methods
 
 from core.decorators import api_login_required
-from .models import AppFeatures, FriendRequest, Friendship, Message, MutualStreak, UserProfile
+from .models import AppFeatures, FriendRequest, Friendship, Message, MutualStreak, UserProfile, UserSettings
 
 User = get_user_model()
 
@@ -227,7 +227,25 @@ def get_or_update_profile(request: HttpRequest) -> JsonResponse:
                 return JsonResponse({"detail": "Invalid image type"}, status=400)
             if pic.size > 5 * 1024 * 1024:  # 5MB limit
                 return JsonResponse({"detail": "Image too large (max 5MB)"}, status=400)
+            # Delete old file to avoid orphans
+            if profile.profile_picture:
+                try:
+                    old_path = profile.profile_picture.path
+                    if os.path.isfile(old_path):
+                        os.remove(old_path)
+                except Exception:
+                    pass
             profile.profile_picture = pic
+
+        if request.POST.get("remove_picture"):
+            if profile.profile_picture:
+                try:
+                    old_path = profile.profile_picture.path
+                    if os.path.isfile(old_path):
+                        os.remove(old_path)
+                except Exception:
+                    pass
+            profile.profile_picture = None
 
         profile.save()
         return JsonResponse({
@@ -379,4 +397,28 @@ def mutual_streaks(request: HttpRequest) -> JsonResponse:
             "they_done_today": they_done,
         })
     return JsonResponse({"mutual_streaks": data})
+
+
+# ── User Settings ────────────────────────────────────────────────────────────
+
+@api_login_required
+def user_settings(request: HttpRequest) -> JsonResponse:
+    """GET returns current settings. POST updates them."""
+    settings_obj = UserSettings.for_user(request.user)
+    if request.method == "GET":
+        return JsonResponse({
+            "hints_visible_to_friends": settings_obj.hints_visible_to_friends,
+        })
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"detail": "Invalid JSON"}, status=400)
+        if "hints_visible_to_friends" in data:
+            settings_obj.hints_visible_to_friends = bool(data["hints_visible_to_friends"])
+        settings_obj.save(update_fields=["hints_visible_to_friends", "updated_at"])
+        return JsonResponse({
+            "hints_visible_to_friends": settings_obj.hints_visible_to_friends,
+        })
+    return JsonResponse({"detail": "Method not allowed"}, status=405)
 

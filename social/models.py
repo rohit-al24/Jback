@@ -193,3 +193,27 @@ class AppFeatures(models.Model):
 
     def __str__(self) -> str:
         return "AppFeatures"
+
+
+class UserSettings(models.Model):
+    """Per-user preference settings."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="user_settings",
+    )
+    # Hints section
+    hints_visible_to_friends = models.BooleanField(
+        default=True,
+        help_text="Allow friends to see hints set by this user",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"UserSettings({self.user_id})"
+
+    @classmethod
+    def for_user(cls, user) -> "UserSettings":
+        obj, _ = cls.objects.get_or_create(user=user)
+        return obj

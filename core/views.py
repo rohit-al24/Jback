@@ -287,6 +287,12 @@ def leaderboard(request: HttpRequest) -> JsonResponse:
 		initials = "".join([p[:1].upper() for p in full_name.split()[:2]]) or (u.username[:2].upper())
 		xp_week = int(getattr(u, "xp_week", 0) or 0)
 		profile = getattr(u, "profile", None)
+		pic_url = None
+		if profile and getattr(profile, "profile_picture", None):
+			try:
+				pic_url = request.build_absolute_uri(profile.profile_picture.url)
+			except Exception:
+				pass
 		entries.append(
 			{
 				"rank": idx,
@@ -299,6 +305,7 @@ def leaderboard(request: HttpRequest) -> JsonResponse:
 				"points_week": xp_week,
 				"points_total": int(getattr(u, "total_points", 0) or 0),
 				"college": u.college.name if u.college else None,
+				"profile_picture": pic_url,
 			}
 		)
 
@@ -1079,9 +1086,16 @@ def vocabulary_study(request: HttpRequest, unit_id: int) -> JsonResponse:
 		for h in friends_qs:
 			profile = getattr(h.user, 'profile', None)
 			display = getattr(profile, 'display_username', None) or h.user.first_name or h.user.username
+			pic_url = None
+			if profile and getattr(profile, 'profile_picture', None):
+				try:
+					pic_url = request.build_absolute_uri(profile.profile_picture.url)
+				except Exception:
+					pass
 			friends_hints_by_vocab[h.vocabulary_item_id].append({
 				'user_id': h.user_id,
 				'display_name': display,
+				'profile_picture': pic_url,
 			})
 
 	data = [

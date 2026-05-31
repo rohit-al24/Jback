@@ -13,4 +13,5 @@ urlpatterns = [
     path("conversations/", views.conversations_list, name="conversations_list"),
     path("chat/<int:partner_id>/", views.chat_messages, name="chat_messages"),
     path("mutual-streaks/", views.mutual_streaks, name="mutual_streaks"),
+    path("settings/", views.user_settings, name="user_settings"),
 ]
