@@ -171,3 +171,25 @@ class UserProfile(models.Model):
 
     def __str__(self) -> str:
         return f"Profile({self.user_id})"
+
+
+class AppFeatures(models.Model):
+    """Admin-controlled feature flags.
+
+    Stored in DB so production (cloud) can toggle without redeploy.
+    """
+
+    audio_calls_enabled = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "App Features"
+        verbose_name_plural = "App Features"
+
+    @classmethod
+    def get_solo(cls) -> "AppFeatures":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self) -> str:
+        return "AppFeatures"

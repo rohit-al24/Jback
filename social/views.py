@@ -10,7 +10,7 @@ from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_http_methods
 
 from core.decorators import api_login_required
-from .models import FriendRequest, Friendship, Message, MutualStreak, UserProfile
+from .models import AppFeatures, FriendRequest, Friendship, Message, MutualStreak, UserProfile
 
 User = get_user_model()
 
@@ -37,6 +37,18 @@ def _user_summary(user, request=None):
         "streak": getattr(user, "streak_count", 0),
         "profile_picture": _profile_pic_url(profile, request) if request else None,
     }
+
+
+# ── Feature Flags ───────────────────────────────────────────────────────────
+
+@api_login_required
+def app_features(request: HttpRequest) -> JsonResponse:
+    if request.method != "GET":
+        return JsonResponse({"detail": "GET required"}, status=405)
+    flags = AppFeatures.get_solo()
+    return JsonResponse({
+        "audio_calls_enabled": bool(flags.audio_calls_enabled),
+    })
 
 
 # ── Friend Requests ──────────────────────────────────────────────────────────
@@ -293,6 +305,10 @@ def chat_messages(request: HttpRequest, partner_id: int) -> JsonResponse:
             (Q(sender_id=partner_id) & Q(receiver_id=uid))
         ).order_by("created_at")[:100]
 
+        partner = User.objects.filter(pk=partner_id).select_related("college", "profile").first()
+        if not partner:
+            return JsonResponse({"detail": "User not found"}, status=404)
+
         # Mark received messages as read
         Message.objects.filter(
             sender_id=partner_id, receiver_id=uid, is_read=False
@@ -308,7 +324,7 @@ def chat_messages(request: HttpRequest, partner_id: int) -> JsonResponse:
             }
             for m in msgs
         ]
-        return JsonResponse({"messages": data})
+        return JsonResponse({"messages": data, "partner": _user_summary(partner, request)})
 
     if request.method == "POST":
         try:

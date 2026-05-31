@@ -4,6 +4,7 @@ from functools import wraps
 from typing import Any, Callable, TypeVar
 
 from django.http import HttpRequest, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
 
 TResponse = TypeVar("TResponse")
@@ -13,6 +14,7 @@ def api_login_required(view_func: Callable[..., TResponse]):
     """Like Django's login_required, but returns JSON 401 instead of redirect."""
 
     @wraps(view_func)
+    @csrf_exempt
     def _wrapped(request: HttpRequest, *args: Any, **kwargs: Any):
         if not request.user.is_authenticated:
             return JsonResponse({"detail": "Authentication required"}, status=401)

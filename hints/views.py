@@ -11,6 +11,15 @@ from social.models import Friendship
 from .models import HintUsage, VocabularyHint
 
 
+def _profile_pic_url(profile, request: HttpRequest) -> str | None:
+    if not profile or not getattr(profile, "profile_picture", None):
+        return None
+    try:
+        return request.build_absolute_uri(profile.profile_picture.url)
+    except Exception:
+        return None
+
+
 @api_login_required
 def vocab_hints(request: HttpRequest, vocab_id: int) -> JsonResponse:
     """GET: get my hint + friends' hints. POST: save/update my hint."""
@@ -21,7 +30,18 @@ def vocab_hints(request: HttpRequest, vocab_id: int) -> JsonResponse:
 
     if request.method == "GET":
         # My hint
-        my_hint = VocabularyHint.objects.filter(user=request.user, vocabulary_item_id=vocab_id).first()
+        my_hint = (
+            VocabularyHint.objects
+            .filter(user=request.user, vocabulary_item_id=vocab_id)
+            .select_related("user", "user__profile")
+            .first()
+        )
+        my_profile = getattr(request.user, "profile", None)
+        my_display_name = (
+            getattr(my_profile, "display_username", None)
+            or request.user.first_name
+            or request.user.username
+        )
 
         # Friends' hints
         from django.db.models import Q
@@ -45,6 +65,7 @@ def vocab_hints(request: HttpRequest, vocab_id: int) -> JsonResponse:
             friends_data.append({
                 "user_id": h.user_id,
                 "display_name": (getattr(profile, "display_username", None) or h.user.first_name or h.user.username),
+                "profile_picture": _profile_pic_url(profile, request),
                 "hint_text": h.hint_text,
                 "updated_at": h.updated_at.isoformat(),
             })
@@ -53,6 +74,9 @@ def vocab_hints(request: HttpRequest, vocab_id: int) -> JsonResponse:
             "my_hint": {
                 "hint_text": my_hint.hint_text if my_hint else None,
                 "has_hint": bool(my_hint),
+                "display_name": my_display_name,
+                "profile_picture": _profile_pic_url(my_profile, request),
+                "updated_at": my_hint.updated_at.isoformat() if my_hint else None,
             },
             "friends_hints": friends_data,
         })
