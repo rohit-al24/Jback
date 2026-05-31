@@ -1,0 +1,8 @@
+cd ~/Documents/Jback
+git pull
+source .venv/bin/activate
+pip install -r requirements.txt
+source .venv/bin/activate
+python manage.py check
+sudo systemctl restart gunicorn-jback
+sudo systemctl status gunicorn-jback
