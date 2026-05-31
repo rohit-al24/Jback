@@ -24,6 +24,7 @@ urlpatterns = [
 
     path("api/auth/csrf/", auth_views.csrf, name="csrf"),
     path("api/auth/me/", auth_views.me, name="me"),
+    path("api/auth/check-username/", auth_views.check_username, name="check_username"),
     path("api/auth/register/", auth_views.register_view, name="register"),
     path("api/auth/login/", auth_views.login_view, name="login"),
     path("api/auth/logout/", auth_views.logout_view, name="logout"),

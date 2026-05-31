@@ -51,6 +51,24 @@ def me(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"authenticated": True, "user": _user_payload(request.user)})
 
 
+def check_username(request: HttpRequest) -> JsonResponse:
+    """GET /api/auth/check-username/?username=... — returns availability."""
+    if request.method != "GET":
+        return JsonResponse({"detail": "GET required"}, status=405)
+    username = (request.GET.get("username") or "").strip()
+    if not username:
+        return JsonResponse({"available": False, "detail": "username required"}, status=400)
+    if len(username) < 3:
+        return JsonResponse({"available": False, "detail": "Too short (min 3 chars)"})
+    if len(username) > 30:
+        return JsonResponse({"available": False, "detail": "Too long (max 30 chars)"})
+    import re
+    if not re.match(r'^[a-zA-Z0-9_]+$', username):
+        return JsonResponse({"available": False, "detail": "Only letters, numbers, underscores"})
+    taken = User.objects.filter(username__iexact=username).exists()
+    return JsonResponse({"available": not taken, "detail": "Available" if not taken else "Already taken"})
+
+
 def register_view(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         return JsonResponse({"detail": "POST required"}, status=405)
