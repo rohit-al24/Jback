@@ -19,7 +19,12 @@ def _profile_pic_url(profile, request):
     if not profile or not profile.profile_picture:
         return None
     try:
-        return request.build_absolute_uri(profile.profile_picture.url)
+        url = profile.profile_picture.url
+        updated_at = getattr(profile, "updated_at", None)
+        if updated_at:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}v={int(updated_at.timestamp())}"
+        return request.build_absolute_uri(url)
     except Exception:
         return None
 

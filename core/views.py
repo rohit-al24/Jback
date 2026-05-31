@@ -290,7 +290,12 @@ def leaderboard(request: HttpRequest) -> JsonResponse:
 		pic_url = None
 		if profile and getattr(profile, "profile_picture", None):
 			try:
-				pic_url = request.build_absolute_uri(profile.profile_picture.url)
+				url = profile.profile_picture.url
+				updated_at = getattr(profile, "updated_at", None)
+				if updated_at:
+					sep = "&" if "?" in url else "?"
+					url = f"{url}{sep}v={int(updated_at.timestamp())}"
+				pic_url = request.build_absolute_uri(url)
 			except Exception:
 				pass
 		entries.append(
@@ -1089,7 +1094,12 @@ def vocabulary_study(request: HttpRequest, unit_id: int) -> JsonResponse:
 			pic_url = None
 			if profile and getattr(profile, 'profile_picture', None):
 				try:
-					pic_url = request.build_absolute_uri(profile.profile_picture.url)
+					url = profile.profile_picture.url
+					updated_at = getattr(profile, "updated_at", None)
+					if updated_at:
+						sep = "&" if "?" in url else "?"
+						url = f"{url}{sep}v={int(updated_at.timestamp())}"
+					pic_url = request.build_absolute_uri(url)
 				except Exception:
 					pass
 			friends_hints_by_vocab[h.vocabulary_item_id].append({

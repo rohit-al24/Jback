@@ -22,7 +22,22 @@ def _issue_token(user) -> str:
     token.save()
     return token.key
 
-def _user_payload(user) -> dict:
+def _profile_pic_url(profile, request: HttpRequest | None = None) -> str | None:
+    if not profile or not getattr(profile, "profile_picture", None):
+        return None
+    try:
+        url = profile.profile_picture.url
+        updated_at = getattr(profile, "updated_at", None)
+        if updated_at:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}v={int(updated_at.timestamp())}"
+        return request.build_absolute_uri(url) if request is not None else url
+    except Exception:
+        return None
+
+
+def _user_payload(user, request: HttpRequest | None = None) -> dict:
+    profile = getattr(user, "profile", None)
     return {
         "id": user.id,
         "username": user.username,
@@ -30,6 +45,8 @@ def _user_payload(user) -> dict:
         "first_name": getattr(user, 'first_name', ''),
         "last_name": getattr(user, 'last_name', ''),
         "email": getattr(user, 'email', ''),
+        "display_username": getattr(profile, "display_username", None),
+        "profile_picture": _profile_pic_url(profile, request),
         "target_level": getattr(user, "target_level", None),
         "total_points": getattr(user, "total_points", None),
         "subscription_status": getattr(user, "subscription_status", None),
@@ -48,7 +65,7 @@ def csrf(request: HttpRequest) -> JsonResponse:
 def me(request: HttpRequest) -> JsonResponse:
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False}, status=401)
-    return JsonResponse({"authenticated": True, "user": _user_payload(request.user)})
+    return JsonResponse({"authenticated": True, "user": _user_payload(request.user, request)})
 
 
 def check_username(request: HttpRequest) -> JsonResponse:
@@ -160,7 +177,7 @@ def register_view(request: HttpRequest) -> JsonResponse:
 
     # Log the user in directly after account creation (TOTP setup removed)
     login(request, user)
-    return JsonResponse({"authenticated": True, "user": _user_payload(user), "token": _issue_token(user)})
+    return JsonResponse({"authenticated": True, "user": _user_payload(user, request), "token": _issue_token(user)})
 
 
 def login_view(request: HttpRequest) -> JsonResponse:
@@ -203,7 +220,7 @@ def login_view(request: HttpRequest) -> JsonResponse:
             return JsonResponse({"detail": "Invalid OTP", "otp_required": True, "code": "otp_required"}, status=400)
 
     login(request, user)
-    return JsonResponse({"authenticated": True, "user": _user_payload(user), "token": _issue_token(user)})
+    return JsonResponse({"authenticated": True, "user": _user_payload(user, request), "token": _issue_token(user)})
 
 
 def totp_confirm(request: HttpRequest) -> JsonResponse:
@@ -234,7 +251,7 @@ def totp_confirm(request: HttpRequest) -> JsonResponse:
     if user.totp_enabled:
         # Already enabled; just log in.
         login(request, user)
-        return JsonResponse({"authenticated": True, "user": _user_payload(user)})
+        return JsonResponse({"authenticated": True, "user": _user_payload(user, request)})
 
     if not user.totp_secret:
         return JsonResponse({"detail": "OTP not configured"}, status=400)
@@ -247,7 +264,7 @@ def totp_confirm(request: HttpRequest) -> JsonResponse:
     user.save(update_fields=["totp_enabled"])
 
     login(request, user)
-    return JsonResponse({"authenticated": True, "user": _user_payload(user), "token": _issue_token(user)})
+    return JsonResponse({"authenticated": True, "user": _user_payload(user, request), "token": _issue_token(user)})
 
 
 def logout_view(request: HttpRequest) -> JsonResponse:

@@ -14,11 +14,13 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+import re
+
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from django.shortcuts import redirect
+from django.views.static import serve
 
 
 def _redirect_to_course(request, model_name: str, rest: str = ""):
@@ -41,5 +43,14 @@ urlpatterns = [
     path("", include("core.urls")),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+if settings.MEDIA_URL and settings.MEDIA_ROOT:
+    # Serve uploaded media (e.g., profile pictures) even when DEBUG=False.
+    # Prefer a real web server/CDN for large deployments.
+    media_prefix = settings.MEDIA_URL.lstrip("/")
+    urlpatterns += [
+        re_path(
+            r"^%s(?P<path>.*)$" % re.escape(media_prefix),
+            serve,
+            kwargs={"document_root": settings.MEDIA_ROOT},
+        )
+    ]
