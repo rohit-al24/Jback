@@ -40,6 +40,7 @@ urlpatterns = [
     path('admin/core/grammarcontent/', lambda r: _redirect_to_course(r, 'grammarcontent')),
 
     path('admin/', admin.site.urls),
+    path("api/admin/", include("administration.urls")),
     path("", include("core.urls")),
 ]
 

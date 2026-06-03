@@ -16,7 +16,7 @@ class User(AbstractUser):
 
 	class Role(models.TextChoices):
 		STUDENT = "student", "Student"
-		EMPLOYEE = "employee", "Employee"
+		EMPLOYEE = "employee", "Staff"
 
 	class SubscriptionStatus(models.TextChoices):
 		FREE = "free", "Free"
@@ -621,7 +621,7 @@ class DailyReviseQuestion(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        # One entry per user per item — vocab or grammar must be exclusive
+        # One entry per user per item ï¿½ vocab or grammar must be exclusive
         indexes = [
             models.Index(fields=['user', 'next_review_date', 'is_active']),
         ]

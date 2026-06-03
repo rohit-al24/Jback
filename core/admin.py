@@ -17,6 +17,7 @@ from .models import (
 	VideoCompletion,
 	WeeklyContent,
 )
+from administration.models import StudentProfile, StaffProfile
 from course.models import (
 	Level,
 	Unit,
@@ -92,6 +93,28 @@ admin.site.site_title = "BenGo Admin Portal"
 admin.site.index_title = "Welcome to BenGo Admin"
 
 
+class StudentProfileInline(admin.StackedInline):
+	model = StudentProfile
+	extra = 0
+	max_num = 1
+	can_delete = True
+	verbose_name = "Student Profile"
+	verbose_name_plural = "Student Profile"
+	fields = ("register_number", "college", "department")
+	classes = ("collapse",)
+
+
+class StaffProfileInline(admin.StackedInline):
+	model = StaffProfile
+	extra = 0
+	max_num = 1
+	can_delete = True
+	verbose_name = "Staff Profile"
+	verbose_name_plural = "Staff Profile"
+	fields = ("staff_id", "college", "department")
+	classes = ("collapse",)
+
+
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
 	fieldsets = DjangoUserAdmin.fieldsets + (
@@ -119,6 +142,7 @@ class UserAdmin(DjangoUserAdmin):
 			},
 		),
 	)
+	inlines = (StudentProfileInline, StaffProfileInline)
 	list_display = (
 		"username",
 		"email",
