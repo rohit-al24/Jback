@@ -62,11 +62,19 @@ CSRF_TRUSTED_ORIGINS = [
     "ionic://localhost",
     # Public hostname
     "https://jback.zynix.us",
+    # Frontend hostname
+    "https://jlpt.zynix.us",
 ]
 
 # Allow the Capacitor app to call the API using cookies (credentials).
 # Capacitor typically sets Origin: http://localhost (sometimes with a port).
 CORS_ALLOW_CREDENTIALS = True
+
+# Explicit production frontend origin
+CORS_ALLOWED_ORIGINS = [
+    "https://jlpt.zynix.us",
+]
+
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http://localhost(?::\\d+)?$",
     r"^http://127\\.0\\.0\\.1(?::\\d+)?$",
